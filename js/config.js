@@ -1,6 +1,7 @@
 // Configuración del panel. La clave "publishable" es PÚBLICA a propósito.
 // NUNCA pongas aquí la clave "secret" / "service_role" ni la contraseña de la base de datos.
 window.PANEL_CONFIG = {
+  proveedor: "github", // "github" o "google" (el que actives en Supabase)
   url: "https://avdssotwcftjuggsvubd.supabase.co",
   clave: "sb_publishable_XMOVDSg-1IeHM_sAgjBjIw_01n48jm1",
 

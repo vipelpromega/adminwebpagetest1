@@ -4,7 +4,7 @@ Página aparte para **crear claves de registro** y ver el estado del sistema de 
 **Este repositorio debe ser PRIVADO.**
 
 ## Cómo se protege
-- Acceso solo con **Google + verificación en 2 pasos (TOTP)**.
+- Acceso solo con **GitHub (o Google) + verificación en 2 pasos (TOTP)**.
 - La lista de administradores vive en la base de datos (`public.admins`, por ID de usuario, no por correo).
   La seguridad real está en el servidor: aunque alguien abra esta página, las funciones `admin_*`
   rechazan a cualquiera que no esté en la lista o no haya pasado el 2.º paso.

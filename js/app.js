@@ -155,13 +155,13 @@
       el("button", {
         type: "button", class: "gate-btn", onclick: function () {
           sb.auth.signInWithOAuth({
-            provider: "google",
+            provider: cfg.proveedor || "github",
             options: { redirectTo: location.origin + location.pathname }
           }).then(function (r) {
-            if (r && r.error) error.textContent = "No se pudo iniciar el acceso con Google.";
+            if (r && r.error) error.textContent = "No se pudo iniciar el acceso.";
           });
         }
-      }, "Iniciar sesión con Google"),
+      }, "Iniciar sesión con " + (cfg.proveedor === "google" ? "Google" : "GitHub")),
       error);
   }
 
@@ -747,7 +747,7 @@
         history.replaceState(null, "", location.pathname + location.hash);
       }
       var sesion = r.data && r.data.session;
-      if (!sesion) { mostrarLogin(huboError ? "El inicio de sesión con Google no se completó." : ""); return; }
+      if (!sesion) { mostrarLogin(huboError ? "El inicio de sesión no se completó." : ""); return; }
       return continuarConSesion();
     }, function () { pantallaError("No se pudo leer la sesión."); });
   }
