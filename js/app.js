@@ -1,0 +1,756 @@
+// Panel de administración. Acceso: Google + verificación en dos pasos (TOTP).
+// Toda autorización real se comprueba en el servidor (supabase/schema.sql, funciones admin_*);
+// esta página solo muestra la interfaz. Los datos que vienen del servidor (nombres, notas...)
+// se insertan siempre como TEXTO, nunca como HTML.
+(function () {
+  "use strict";
+
+  var cfg = window.PANEL_CONFIG || {};
+  var raiz = document.getElementById("raiz");
+  var html = document.documentElement;
+  var sb = null;
+  var admin = null;            // { id, email } cuando el servidor concedió el acceso
+  var generacion = 0;          // sirve para ignorar respuestas que llegan tarde
+  var limpiezas = [];          // se ejecutan al salir de una vista
+  var inactividad = { timer: null, manejador: null };
+  var principal = null, titulo = null, subtitulo = null, enlaces = {};
+
+  /* ---------- Utilidades ---------- */
+  function el(tag, props) {
+    var n = document.createElement(tag);
+    Object.keys(props || {}).forEach(function (k) {
+      var v = props[k];
+      if (v == null || v === false) return;
+      if (k === "class") n.className = v;
+      else if (k.indexOf("on") === 0 && typeof v === "function") n.addEventListener(k.slice(2), v);
+      else n.setAttribute(k, v === true ? "" : v);
+    });
+    anadir(n, Array.prototype.slice.call(arguments, 2));
+    return n;
+  }
+  function anadir(padre, hijos) {
+    hijos.forEach(function (c) {
+      if (c == null || c === false) return;
+      if (Array.isArray(c)) anadir(padre, c);
+      else padre.appendChild(typeof c === "string" || typeof c === "number" ? document.createTextNode(String(c)) : c);
+    });
+  }
+  function vaciar(n) { while (n.firstChild) n.removeChild(n.firstChild); }
+
+  function fmtFecha(iso) {
+    if (!iso) return "—";
+    var d = new Date(iso);
+    return isNaN(d) ? "—" : d.toLocaleString("es-PE", { dateStyle: "medium", timeStyle: "short" });
+  }
+  function fmtBytes(n) {
+    if (n < 1024) return n + " B";
+    if (n < 1048576) return (n / 1024).toFixed(0) + " KB";
+    return (n / 1048576).toFixed(1) + " MB";
+  }
+
+  function msg(r) {
+    switch (r && r.error) {
+      case "nombre_formato": return "El nombre debe tener entre 2 y 80 caracteres y al menos una letra.";
+      case "nota_formato": return "La nota no puede pasar de 200 caracteres.";
+      case "no_encontrada": return "Esa clave ya no existe.";
+      case "ya_usada": return "Esa clave ya fue usada: no se puede revocar.";
+      case "no_autorizado": return "Tu cuenta no está autorizada.";
+      case "permiso": return "El servidor rechazó la petición.";
+      case "sin_script": return "El servidor no está listo: falta ejecutar supabase/schema.sql en Supabase.";
+      case "red": return "No se pudo conectar con el servidor.";
+      default: return "Ocurrió un error. Inténtalo de nuevo.";
+    }
+  }
+
+  function copiar(texto, boton, etiqueta) {
+    var falla = function () { boton.textContent = "Selecciona y copia (Ctrl+C)"; };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(texto).then(function () {
+        boton.textContent = "Copiado";
+        setTimeout(function () { boton.textContent = etiqueta; }, 1500);
+      }, falla);
+    } else falla();
+  }
+
+  var ICONOS = {
+    panel: '<rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/>',
+    estado: '<path d="M3 12h4l3-8 4 16 3-8h4"/>',
+    consola: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9l3 3-3 3M12 15h5"/>',
+    autenticacion: '<circle cx="8" cy="15" r="4"/><path d="M11 12l9-9"/><path d="M16 7l3 3"/><path d="M14 9l2 2"/>',
+    perfiles: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c0-3.5 3-6 6.5-6s6.5 2.5 6.5 6"/><circle cx="17.5" cy="9" r="2.5"/><path d="M18 14.2c2.3.3 3.8 2.2 3.8 4.8"/>',
+    registros: '<path d="M8 6h13M8 12h13M8 18h13"/><path d="M3 6h.01M3 12h.01M3 18h.01"/>',
+    red: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/>',
+    menu: '<path d="M4 6h16M4 12h16M4 18h16"/>',
+    salir: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/>'
+  };
+  function icono(nombre) {
+    var s = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    s.setAttribute("viewBox", "0 0 24 24");
+    s.setAttribute("aria-hidden", "true");
+    s.innerHTML = ICONOS[nombre]; // texto fijo del código, nunca datos del servidor
+    return s;
+  }
+
+  /* ---------- Servidor ---------- */
+  // Siempre devuelve { ok, ... , ms }; nunca lanza errores.
+  function api(nombre, args) {
+    var t0 = performance.now();
+    return sb.rpc(nombre, args || {}).then(function (res) {
+      var ms = Math.round(performance.now() - t0);
+      if (res.error) {
+        var codigo = String(res.error.code || "");
+        if (res.status === 401 || res.status === 403) return { ok: false, error: "permiso", ms: ms };
+        if (res.status === 404 || codigo === "PGRST202") return { ok: false, error: "sin_script", ms: ms };
+        if (!res.status) return { ok: false, error: "red", ms: ms };
+        return { ok: false, error: "servidor", ms: ms };
+      }
+      var d = res.data;
+      if (!d || typeof d !== "object") return { ok: false, error: "servidor", ms: ms };
+      if (d.ok === false && d.error === "no_autorizado" && admin) {
+        admin = null;
+        pantallaNoAutorizado();
+      }
+      d.ms = ms;
+      return d;
+    }, function () { return { ok: false, error: "red" }; });
+  }
+
+  /* ---------- Pantallas de acceso ---------- */
+  function pantalla() {
+    detenerTodo();
+    vaciar(raiz);
+    raiz.appendChild(el("div", { class: "gate" },
+      el("div", { class: "gate-card" }, Array.prototype.slice.call(arguments))));
+  }
+
+  function campoTexto(o) {
+    var input = el("input", {
+      id: "campo-" + o.id, class: "f-input", type: o.tipo || "text", maxlength: o.max,
+      autocomplete: o.autocomplete || "off", inputmode: o.inputmode, spellcheck: "false"
+    });
+    var grupo = el("div", { class: "f-group" },
+      o.etiqueta ? el("label", { class: "f-label", "for": "campo-" + o.id }, o.etiqueta) : null,
+      el("div", { class: "f-box" }, input),
+      o.ayuda ? el("p", { class: "f-hint" }, o.ayuda) : null);
+    return { grupo: grupo, input: input };
+  }
+
+  function pantallaCargando() {
+    pantalla(el("h1", { class: "gate-prompt" }, "Panel de administración"), el("p", { class: "muted" }, "Cargando…"));
+  }
+
+  function pantallaError(texto) {
+    pantalla(
+      el("h1", { class: "gate-prompt" }, "No se pudo continuar"),
+      el("p", { class: "muted" }, texto),
+      el("button", { type: "button", class: "gate-btn", onclick: arrancar }, "Reintentar"),
+      el("button", { type: "button", class: "gate-link", onclick: function () { cerrarSesion(); } }, "Cerrar sesión"));
+  }
+
+  function mostrarLogin(mensaje) {
+    var error = el("p", { class: "f-error", role: "alert" }, mensaje || "");
+    pantalla(
+      el("h1", { class: "gate-prompt" }, "Panel de administración"),
+      el("p", { class: "muted" }, "Acceso restringido: solo cuentas autorizadas."),
+      el("button", {
+        type: "button", class: "gate-btn", onclick: function () {
+          sb.auth.signInWithOAuth({
+            provider: "google",
+            options: { redirectTo: location.origin + location.pathname }
+          }).then(function (r) {
+            if (r && r.error) error.textContent = "No se pudo iniciar el acceso con Google.";
+          });
+        }
+      }, "Iniciar sesión con Google"),
+      error);
+  }
+
+  function formularioCodigo(factorId, textoBoton) {
+    var campo = campoTexto({
+      id: "totp", etiqueta: "Código de 6 dígitos de tu app:", max: 7, inputmode: "numeric",
+      autocomplete: "one-time-code"
+    });
+    var error = el("p", { class: "f-error", role: "alert" });
+    var boton = el("button", { type: "submit", class: "gate-btn" }, textoBoton);
+    var form = el("form", {
+      novalidate: true, onsubmit: function (e) {
+        e.preventDefault();
+        var c = String(campo.input.value || "").replace(/\D/g, "");
+        if (c.length !== 6) { error.textContent = "Escribe los 6 dígitos de tu app."; return; }
+        boton.disabled = true;
+        error.textContent = "";
+        sb.auth.mfa.challengeAndVerify({ factorId: factorId, code: c }).then(function (res) {
+          if (res.error) {
+            boton.disabled = false;
+            error.textContent = "Código incorrecto. Revisa que la hora de tu teléfono sea automática.";
+            campo.input.select();
+            return;
+          }
+          return entrarAlPanel();
+        }, function () { boton.disabled = false; error.textContent = msg({ error: "red" }); });
+      }
+    }, campo.grupo, error, boton);
+    return form;
+  }
+
+  function pantallaVerificar(factorId) {
+    pantalla(
+      el("h1", { class: "gate-prompt" }, "Verificación en dos pasos"),
+      el("p", { class: "muted" }, "Abre tu app de autenticación y escribe el código actual."),
+      formularioCodigo(factorId, "Verificar"),
+      el("button", { type: "button", class: "gate-link", onclick: function () { cerrarSesion(); } }, "Cerrar sesión"));
+    var i = document.getElementById("campo-totp");
+    if (i) i.focus();
+  }
+
+  function pantallaEnrolar(f) {
+    var img = el("img", { class: "qr", alt: "Código QR para tu app de autenticación", width: "200", height: "200" });
+    img.src = f.totp.qr_code; // imagen generada por el servidor de autenticación (data:)
+    pantalla(
+      el("h1", { class: "gate-prompt" }, "Activa la verificación en dos pasos"),
+      el("p", { class: "muted" }, "Escanea el QR con una app de autenticación (Google Authenticator, Microsoft Authenticator, Authy…) y escribe el código que muestra."),
+      el("div", { class: "qr-bloque" }, img,
+        el("p", { class: "f-hint" }, "¿No puedes escanear? Escribe esta clave en la app:"),
+        el("code", { class: "secreto" }, f.totp.secret)),
+      formularioCodigo(f.id, "Activar y entrar"),
+      el("button", { type: "button", class: "gate-link", onclick: function () { cerrarSesion(); } }, "Cerrar sesión"));
+    var i = document.getElementById("campo-totp");
+    if (i) i.focus();
+  }
+
+  function pantallaNoAutorizado() {
+    sb.auth.getSession().then(function (r) {
+      var u = r.data && r.data.session && r.data.session.user;
+      var id = u ? u.id : "(desconocido)";
+      var copiarBtn = el("button", {
+        type: "button", class: "btn secondary",
+        onclick: function () { copiar(id, copiarBtn, "Copiar identificador"); }
+      }, "Copiar identificador");
+      pantalla(
+        el("h1", { class: "gate-prompt" }, "Cuenta no autorizada"),
+        el("p", { class: "muted" }, "Iniciaste sesión" + (u && u.email ? " como " + u.email : "") +
+          ", pero esta cuenta no está en la lista de administradores. Pásale este identificador al propietario del proyecto para que te autorice:"),
+        el("code", { class: "id-caja" }, id),
+        el("div", { class: "fila-botones" }, copiarBtn,
+          el("button", { type: "button", class: "btn secondary", onclick: function () { entrarAlPanel(); } }, "Volver a comprobar")),
+        el("button", { type: "button", class: "gate-link", onclick: function () { cerrarSesion(); } }, "Cerrar sesión"));
+    });
+  }
+
+  /* ---------- Flujo de acceso ---------- */
+  function continuarConSesion() {
+    return sb.auth.mfa.getAuthenticatorAssuranceLevel().then(function (r) {
+      if (r.error) throw r.error;
+      if (r.data.currentLevel === "aal2") return entrarAlPanel();
+      return sb.auth.mfa.listFactors().then(function (l) {
+        if (l.error) throw l.error;
+        var verificados = l.data.totp || [];
+        if (verificados.length) return pantallaVerificar(verificados[0].id);
+        var sinVerificar = (l.data.all || []).filter(function (f) { return f.status === "unverified"; });
+        return Promise.all(sinVerificar.map(function (f) { return sb.auth.mfa.unenroll({ factorId: f.id }); }))
+          .then(function () { return sb.auth.mfa.enroll({ factorType: "totp", friendlyName: "Panel " + Date.now() }); })
+          .then(function (e) { if (e.error) throw e.error; pantallaEnrolar(e.data); });
+      });
+    }).catch(function () {
+      pantallaError("No se pudo comprobar tu sesión. Revisa tu conexión y vuelve a intentarlo.");
+    });
+  }
+
+  function entrarAlPanel() {
+    return api("admin_yo").then(function (r) {
+      if (r.ok) { admin = { id: r.user_id, email: r.email }; construirApp(); return; }
+      if (r.error === "no_autorizado") return pantallaNoAutorizado();
+      pantallaError(msg(r));
+    });
+  }
+
+  function cerrarSesion(mensaje) {
+    detenerTodo();
+    admin = null;
+    sb.auth.signOut().then(function (r) {
+      // Sin conexión, signOut() puede dejar la sesión guardada: se borra al menos en este equipo.
+      if (r && r.error) return sb.auth.signOut({ scope: "local" });
+    }).then(function () { mostrarLogin(mensaje); }, function () { mostrarLogin(mensaje); });
+  }
+
+  /* ---------- Inactividad ---------- */
+  function iniciarInactividad() {
+    var reiniciar = function () {
+      clearTimeout(inactividad.timer);
+      inactividad.timer = setTimeout(function () {
+        cerrarSesion("Sesión cerrada por inactividad.");
+      }, cfg.inactividadMs || 900000);
+    };
+    inactividad.manejador = reiniciar;
+    ["pointerdown", "keydown", "touchstart"].forEach(function (ev) {
+      window.addEventListener(ev, reiniciar, { passive: true });
+    });
+    reiniciar();
+  }
+
+  function detenerTodo() {
+    limpiarVista();
+    clearTimeout(inactividad.timer);
+    if (inactividad.manejador) {
+      ["pointerdown", "keydown", "touchstart"].forEach(function (ev) {
+        window.removeEventListener(ev, inactividad.manejador);
+      });
+      inactividad.manejador = null;
+    }
+    window.removeEventListener("hashchange", ruta);
+  }
+
+  function limpiarVista() {
+    limpiezas.forEach(function (f) { try { f(); } catch (e) { /* nada */ } });
+    limpiezas = [];
+  }
+
+  /* ---------- Estructura de la aplicación ---------- */
+  var VISTAS = [
+    { id: "panel", nombre: "Panel", sub: "Resumen general", render: vistaPanel },
+    { id: "estado", nombre: "Estado", sub: "Estado de la web y de la base de datos, en vivo", render: vistaEstado },
+    { id: "consola", nombre: "Consola", sub: "Comandos seguros", render: function (c) { proximamente(c, "Consola", ["Comandos predefinidos y seguros (sin SQL libre).", "Por ejemplo: limpiar sesiones caducadas o liberar bloqueos."]); }, pronto: true },
+    { id: "autenticacion", nombre: "Autenticación", sub: "Crear claves de registro", render: vistaAutenticacion },
+    { id: "perfiles", nombre: "Perfiles", sub: "Todas las claves, sus usuarios y su estado", render: vistaPerfiles },
+    { id: "registros", nombre: "Registros", sub: "Historial de acciones", render: function (c) { proximamente(c, "Registros", ["Historial de quién creó o revocó cada clave y cuándo.", "El servidor ya guarda estos eventos; falta la pantalla para consultarlos."]); }, pronto: true },
+    { id: "red", nombre: "Red", sub: "Conexiones e intentos de acceso", render: function (c) { proximamente(c, "Red", ["IP que fallaron o fueron bloqueadas al intentar entrar.", "Las redes internas de la base de datos solo se ven en el panel de Supabase."]); }, pronto: true }
+  ];
+
+  function construirApp() {
+    detenerTodo();
+    vaciar(raiz);
+
+    var toggle = el("button", {
+      type: "button", class: "side-btn", id: "sidebar-toggle", "aria-expanded": "false",
+      "aria-label": "Expandir barra", "data-tooltip": "Expandir barra"
+    }, icono("menu"), el("span", { class: "label" }, "Expandir"));
+
+    var nav = el("nav", { class: "sidebar", "aria-label": "Navegación principal" }, toggle, el("div", { class: "side-divider", role: "separator" }));
+    enlaces = {};
+    VISTAS.forEach(function (v) {
+      var a = el("a", {
+        class: "side-btn" + (v.pronto ? " pronto" : ""), href: "#/" + v.id,
+        "aria-label": v.nombre + (v.pronto ? " (próximamente)" : ""),
+        "data-tooltip": v.nombre + (v.pronto ? " (próximamente)" : "")
+      }, icono(v.id), el("span", { class: "label" }, v.nombre));
+      enlaces[v.id] = a;
+      nav.appendChild(a);
+    });
+    nav.appendChild(el("button", {
+      type: "button", class: "side-btn bottom", "aria-label": "Cerrar sesión", "data-tooltip": "Cerrar sesión",
+      onclick: function () { cerrarSesion(); }
+    }, icono("salir"), el("span", { class: "label" }, "Cerrar sesión")));
+
+    titulo = el("h1");
+    subtitulo = el("p");
+    principal = el("main", { tabindex: "-1" });
+    raiz.appendChild(nav);
+    raiz.appendChild(el("div", { class: "page" }, el("header", {}, titulo, subtitulo), principal));
+
+    // Barra expandible (el estado se recuerda en este navegador)
+    try { if (localStorage.getItem("barra-admin") === "1") html.classList.add("sb-open"); } catch (e) { /* nada */ }
+    var sincronizar = function () {
+      var abierta = html.classList.contains("sb-open");
+      var t = abierta ? "Contraer barra" : "Expandir barra";
+      toggle.setAttribute("aria-expanded", String(abierta));
+      toggle.setAttribute("aria-label", t);
+      toggle.setAttribute("data-tooltip", t);
+      toggle.querySelector(".label").textContent = abierta ? "Contraer" : "Expandir";
+    };
+    toggle.addEventListener("click", function () {
+      var abierta = html.classList.toggle("sb-open");
+      try { localStorage.setItem("barra-admin", abierta ? "1" : "0"); } catch (e) { /* nada */ }
+      sincronizar();
+    });
+    sincronizar();
+
+    window.addEventListener("hashchange", ruta);
+    iniciarInactividad();
+    ruta();
+  }
+
+  function ruta() {
+    var m = /^#\/([a-z]+)/.exec(location.hash);
+    var v = VISTAS.filter(function (x) { return m && x.id === m[1]; })[0] || VISTAS[0];
+    limpiarVista();
+    generacion++;
+    var g = generacion;
+    vaciar(principal);
+    titulo.textContent = v.nombre;
+    subtitulo.textContent = v.sub;
+    document.title = v.nombre + " · Panel de administración";
+    Object.keys(enlaces).forEach(function (id) {
+      if (id === v.id) enlaces[id].setAttribute("aria-current", "page");
+      else enlaces[id].removeAttribute("aria-current");
+    });
+    v.render(principal, g);
+  }
+
+  function proximamente(c, nombre, lineas) {
+    c.appendChild(el("section", { class: "card proximamente" },
+      el("h2", {}, nombre + ": próximamente"),
+      el("p", { class: "muted" }, "Esta sección llegará en una próxima versión. Incluirá:"),
+      el("ul", {}, lineas.map(function (t) { return el("li", {}, t); }))));
+  }
+
+  /* ---------- Panel ---------- */
+  function tarjetaStat(etiqueta) {
+    var num = el("div", { class: "stat-num" }, "…");
+    return { nodo: el("div", { class: "stat" }, num, el("div", { class: "stat-etq" }, etiqueta)), num: num };
+  }
+
+  function insignia(estado) {
+    var texto = { sin_usar: "Sin usar", usada: "Usada", revocada: "Revocada" }[estado] || estado;
+    return el("span", { class: "badge " + estado }, texto);
+  }
+
+  function vistaPanel(c, g) {
+    var s = { sin: tarjetaStat("Claves sin usar"), usadas: tarjetaStat("Claves usadas"), rev: tarjetaStat("Claves revocadas"), cuentas: tarjetaStat("Cuentas registradas") };
+    var lista = el("div", { class: "lista-simple" }, el("div", { class: "fila muted" }, "Cargando…"));
+    c.appendChild(el("div", { class: "vista" },
+      el("div", { class: "stats" }, s.sin.nodo, s.usadas.nodo, s.rev.nodo, s.cuentas.nodo),
+      el("div", { class: "fila-botones" }, el("a", { class: "btn", href: "#/autenticacion" }, "Crear una clave")),
+      el("h2", { class: "grupo-titulo" }, "Últimas claves"),
+      lista));
+
+    Promise.all([api("admin_estado"), api("admin_listar_claves")]).then(function (rs) {
+      if (g !== generacion) return;
+      var est = rs[0], cl = rs[1];
+      if (est.ok) {
+        s.sin.num.textContent = est.claves_sin_usar;
+        s.usadas.num.textContent = est.claves_usadas;
+        s.rev.num.textContent = est.claves_revocadas;
+        s.cuentas.num.textContent = est.usuarios;
+      } else {
+        [s.sin, s.usadas, s.rev, s.cuentas].forEach(function (x) { x.num.textContent = "—"; });
+      }
+      vaciar(lista);
+      if (!cl.ok) { lista.appendChild(el("div", { class: "fila" }, msg(cl))); return; }
+      if (!cl.claves.length) { lista.appendChild(el("div", { class: "fila muted" }, "Todavía no hay claves.")); return; }
+      cl.claves.slice(0, 5).forEach(function (k) {
+        lista.appendChild(el("div", { class: "fila" },
+          el("div", {}, el("div", {}, k.etiqueta || "(código inicial)"),
+            el("div", { class: "sub" }, "Creada " + fmtFecha(k.creado))),
+          insignia(k.estado)));
+      });
+    });
+  }
+
+  /* ---------- Estado (en vivo) ---------- */
+  function vistaEstado(c, g) {
+    var filas = {};
+    function fila(id, nombre, extra) {
+      var punto = el("span", { class: "punto off" });
+      var detalle = el("div", { class: "detalle" }, "…");
+      var nodo = el("div", { class: "fila estado-fila" }, punto,
+        el("div", { class: "texto" }, el("div", {}, nombre), detalle, extra || null));
+      filas[id] = { punto: punto, detalle: detalle };
+      return nodo;
+    }
+    function poner(id, nivel, texto) {
+      filas[id].punto.className = "punto " + nivel;
+      filas[id].detalle.textContent = texto;
+    }
+
+    var barra = el("progress", { max: "100", value: "0", "aria-label": "Uso de la base de datos" });
+    var etiqueta = el("span", {}, "En vivo");
+    var cuando = el("span", { class: "muted" }, "");
+    var puntoVivo = el("span", { class: "punto ok" });
+    var pausar = el("button", { type: "button", class: "btn secondary pequeno" }, "Pausar");
+    var cabecera = el("div", { class: "en-vivo" }, puntoVivo, etiqueta, cuando, pausar);
+
+    c.appendChild(el("div", { class: "vista" }, cabecera,
+      el("div", { class: "lista-simple" },
+        fila("servidor", "Conexión con el servidor"),
+        fila("bd", "Base de datos", barra),
+        fila("auth", "Autenticación del panel"),
+        fila("sitio", "Sitio público"),
+        fila("cuentas", "Cuentas y sesiones"),
+        fila("proteccion", "Protección contra intentos"),
+        fila("reloj", "Hora del servidor"))));
+
+    var ultima = 0, pausado = false, enCurso = false;
+
+    function sitioPublico() {
+      if (!cfg.sitioPublico) { poner("sitio", "off", "No configurado (campo sitioPublico en js/config.js)."); return Promise.resolve(); }
+      var ctl = new AbortController();
+      var t = setTimeout(function () { ctl.abort(); }, 5000);
+      var t0 = performance.now();
+      return fetch(cfg.sitioPublico, { mode: "no-cors", cache: "no-store", signal: ctl.signal }).then(function () {
+        poner("sitio", "ok", "Responde (" + Math.round(performance.now() - t0) + " ms).");
+      }, function () {
+        poner("sitio", "error", "No responde.");
+      }).then(function () { clearTimeout(t); });
+    }
+
+    function actualizar() {
+      if (enCurso || pausado || document.hidden) return;
+      enCurso = true;
+      Promise.all([api("admin_estado"), sitioPublico()]).then(function (rs) {
+        enCurso = false;
+        if (g !== generacion) return;
+        var e = rs[0];
+        if (!e.ok) {
+          poner("servidor", "error", e.error === "red" ? "Sin respuesta del servidor." : msg(e));
+          ["bd", "cuentas", "proteccion", "reloj"].forEach(function (id) { poner(id, "off", "Sin datos."); });
+          poner("auth", "off", "Sin datos.");
+          return;
+        }
+        ultima = Date.now();
+        poner("servidor", e.ms < 1000 ? "ok" : "warn", "Respuesta en " + e.ms + " ms.");
+        var limite = (cfg.limiteBdMb || 500) * 1048576;
+        var pct = Math.min(100, e.db_bytes / limite * 100);
+        barra.value = pct;
+        poner("bd", pct >= 95 ? "error" : pct >= 80 ? "warn" : "ok",
+          "PostgreSQL " + e.version + " · " + fmtBytes(e.db_bytes) + " de " + (cfg.limiteBdMb || 500) + " MB (" + pct.toFixed(1) + " %)");
+        poner("auth", "ok", "Sesión de " + (admin ? admin.email : "—") + " · verificación en dos pasos activa.");
+        poner("cuentas", "ok", e.usuarios + " cuentas · " + e.sesiones_activas + " sesiones activas.");
+        poner("proteccion", e.bloqueos_activos > 0 ? "warn" : "ok",
+          e.bloqueos_activos > 0 ? e.bloqueos_activos + " bloqueos activos por intentos fallidos." : "Sin bloqueos activos.");
+        var dif = Math.abs(Date.parse(e.hora) - Date.now());
+        poner("reloj", dif > 120000 ? "warn" : "ok",
+          fmtFecha(e.hora) + (dif > 120000 ? " · el reloj de este equipo difiere más de 2 minutos (afecta a los códigos de 2 pasos)." : ""));
+      });
+    }
+
+    function refrescarTexto() {
+      cuando.textContent = pausado ? "" :
+        ultima ? "· actualizado hace " + Math.max(0, Math.round((Date.now() - ultima) / 1000)) + " s" : "· cargando…";
+    }
+
+    pausar.addEventListener("click", function () {
+      pausado = !pausado;
+      pausar.textContent = pausado ? "Reanudar" : "Pausar";
+      cabecera.classList.toggle("pausado", pausado);
+      etiqueta.textContent = pausado ? "En pausa" : "En vivo";
+      refrescarTexto();
+      if (!pausado) actualizar();
+    });
+
+    var t1 = setInterval(actualizar, cfg.refrescoMs || 5000);
+    var t2 = setInterval(refrescarTexto, 1000);
+    limpiezas.push(function () { clearInterval(t1); clearInterval(t2); });
+    refrescarTexto();
+    actualizar();
+  }
+
+  /* ---------- Autenticación: crear claves ---------- */
+  function vistaAutenticacion(c, g) {
+    var nombre = campoTexto({ id: "nombre", etiqueta: "Nombre de identificación:", max: 80, ayuda: "Por ejemplo: YAUYO RAMOS FABIANO LEANDRO" });
+    var nota = campoTexto({ id: "nota", etiqueta: "Nota (opcional):", max: 200 });
+    var error = el("p", { class: "f-error", role: "alert" });
+    var boton = el("button", { type: "submit", class: "btn" }, "Crear clave");
+    var resultado = el("div", { class: "vista" });
+    var pasosCaja = el("div");
+    var vistaPrevia = null;      // prefijo calculado en esta página
+    var pedido = 0, debounce = null, ocultarT = null;
+
+    var form = el("form", { novalidate: true, class: "card", autocomplete: "off" },
+      el("h2", {}, "Nueva clave"),
+      nombre.grupo, nota.grupo,
+      el("p", { class: "f-hint sin-margen" }, "Se agregarán más campos con el tiempo."),
+      error, boton);
+
+    c.appendChild(el("div", { class: "vista" },
+      el("div", { class: "dos-columnas" },
+        el("div", { class: "vista" }, form, resultado),
+        el("section", { class: "card" }, el("h2", {}, "Cómo se forma la clave"), pasosCaja))));
+
+    function pintarPasos(p) {
+      vaciar(pasosCaja);
+      if (!p.normalizado) {
+        pasosCaja.appendChild(el("p", { class: "muted" }, "Escribe un nombre para ver, paso a paso, cómo se convierte en clave."));
+        return;
+      }
+      var tabla = el("table", { class: "tabla-pequena mono" },
+        el("thead", {}, el("tr", {}, el("th", {}, "Letra"), el("th", {}, "ASCII"), el("th", {}, "Binario"), el("th", {}, "Hex"))),
+        el("tbody", {}, p.porLetra.map(function (x) {
+          return el("tr", {}, el("td", {}, x.letra), el("td", {}, x.decimal.join(" ")), el("td", {}, x.binario.join(" ")), el("td", {}, x.hex.join(" ")));
+        })));
+      function paso(n, t, ...cuerpo) {
+        return el("li", {}, el("span", { class: "num" }, n), el("div", {}, el("div", { class: "titulo" }, t), cuerpo));
+      }
+      pasosCaja.appendChild(el("ol", { class: "pasos" },
+        paso(1, "Nombre normalizado", el("div", { class: "valor mono" }, p.normalizado),
+          p.recortado ? el("div", { class: "f-hint" }, "Solo se usan las primeras " + Clave.MAX_PALABRAS + " palabras para las iniciales.") : null),
+        paso(2, "Iniciales (primera letra de cada palabra)",
+          el("div", { class: "chips" }, p.iniciales.map(function (l) { return el("span", { class: "chip" }, l); }))),
+        paso(3, "Cada inicial: ASCII → binario → hexadecimal", tabla),
+        paso(4, "Iniciales en hexadecimal", el("div", { class: "valor mono" }, p.inicialesHex)),
+        paso(5, "Nombre completo → ASCII → hexadecimal", el("div", { class: "valor mono" }, p.nombreHex)),
+        paso(6, "Huella del nombre (SHA-256 del paso 5, 4 primeros caracteres)", el("div", { class: "valor mono" }, p.huella)),
+        paso(7, "Parte aleatoria (la genera el servidor)",
+          el("div", { class: "valor mono" }, "•••• •••• •••• ••••"),
+          el("div", { class: "f-hint" }, "Esta parte es la que hace segura la clave: nadie puede calcularla a partir del nombre.")),
+        paso(8, "Clave final (vista previa)", el("div", { class: "valor mono" }, p.vista))));
+    }
+
+    function recalcular() {
+      var mio = ++pedido;
+      Clave.pasos(nombre.input.value).then(function (p) {
+        if (mio !== pedido || g !== generacion) return;
+        vistaPrevia = p.prefijo;
+        pintarPasos(p);
+      });
+    }
+    nombre.input.addEventListener("input", function () {
+      clearTimeout(debounce);
+      debounce = setTimeout(recalcular, 120);
+    });
+    limpiezas.push(function () { clearTimeout(debounce); clearTimeout(ocultarT); });
+    recalcular();
+
+    form.addEventListener("submit", function (e) {
+      e.preventDefault();
+      error.textContent = "";
+      if (!Clave.nombreValido(nombre.input.value)) { error.textContent = msg({ error: "nombre_formato" }); return; }
+      boton.disabled = true;
+      api("admin_crear_clave", { p_nombre: nombre.input.value.trim(), p_nota: nota.input.value.trim() || null }).then(function (r) {
+        boton.disabled = false;
+        if (g !== generacion) return;
+        if (!r.ok) { error.textContent = msg(r); return; }
+        nombre.input.value = "";
+        nota.input.value = "";
+        recalcular();
+        mostrarResultado(r);
+      });
+    });
+
+    function mostrarResultado(r) {
+      vaciar(resultado);
+      clearTimeout(ocultarT);
+      var copiarBtn = el("button", { type: "button", class: "btn", onclick: function () { copiar(r.codigo, copiarBtn, "Copiar clave"); } }, "Copiar clave");
+      var distinta = vistaPrevia && r.vista && r.vista.indexOf(vistaPrevia) !== 0;
+      resultado.appendChild(el("section", { class: "card resultado" },
+        el("h2", {}, "Clave creada para " + r.etiqueta),
+        el("code", { class: "clave-grande" }, r.codigo),
+        el("div", { class: "aviso cuidado" }, "Cópiala ahora: no se vuelve a mostrar. En el servidor solo queda su huella."),
+        distinta ? el("p", { class: "f-hint" }, "El servidor calculó el identificador con otra regla de mayúsculas (letras especiales). Vale el del servidor.") : null,
+        el("div", { class: "fila-botones" }, copiarBtn)));
+      ocultarT = setTimeout(function () {
+        vaciar(resultado);
+        resultado.appendChild(el("div", { class: "aviso" }, "Por seguridad la clave se ocultó. Si no la copiaste, revócala en Perfiles y crea otra."));
+      }, 120000);
+    }
+  }
+
+  /* ---------- Perfiles: todas las claves ---------- */
+  function vistaPerfiles(c, g) {
+    var claves = [];
+    var buscar = campoTexto({ id: "buscar", max: 80 });
+    buscar.input.setAttribute("placeholder", "Buscar por nombre, nota o usuario");
+    buscar.input.setAttribute("aria-label", "Buscar");
+    var filtro = el("select", { class: "f-select", "aria-label": "Filtrar por estado" },
+      el("option", { value: "" }, "Todas"), el("option", { value: "sin_usar" }, "Sin usar"),
+      el("option", { value: "usada" }, "Usadas"), el("option", { value: "revocada" }, "Revocadas"));
+    var cuenta = el("span", { class: "muted" }, "");
+    var actualizarBtn = el("button", { type: "button", class: "btn secondary pequeno" }, "Actualizar");
+    var aviso = el("p", { class: "f-error", role: "alert" });
+    var cuerpo = el("tbody");
+    var vacio = el("div", { class: "vacio" }, "Cargando…");
+
+    c.appendChild(el("div", { class: "vista" },
+      el("div", { class: "barra-herramientas" },
+        el("div", { class: "f-box" }, buscar.input), filtro, actualizarBtn, cuenta),
+      aviso,
+      el("div", { class: "tabla-envoltorio" },
+        el("table", { class: "tabla" },
+          el("thead", {}, el("tr", {}, ["Identificación", "Clave", "Estado", "Usuario", "Creada", "Usada", "Creada por", ""].map(function (t) { return el("th", {}, t); }))),
+          cuerpo),
+        vacio)));
+
+    function accion(k) {
+      var celda = el("td", { class: "nowrap" });
+      if (k.estado !== "sin_usar") return celda;
+      var revocar = el("button", { type: "button", class: "btn secondary pequeno" }, "Revocar");
+      revocar.addEventListener("click", function () {
+        vaciar(celda);
+        var si = el("button", { type: "button", class: "btn danger pequeno" }, "Sí, revocar");
+        var no = el("button", { type: "button", class: "btn secondary pequeno" }, "No");
+        no.addEventListener("click", function () { vaciar(celda); celda.appendChild(revocar); });
+        si.addEventListener("click", function () {
+          si.disabled = true;
+          api("admin_revocar_clave", { p_id: k.id }).then(function (r) {
+            if (g !== generacion) return;
+            if (!r.ok) { aviso.textContent = msg(r); }
+            cargar();
+          });
+        });
+        celda.appendChild(el("span", { class: "confirmar" }, "¿Seguro?", si, no));
+      });
+      celda.appendChild(revocar);
+      return celda;
+    }
+
+    function pintar() {
+      var q = buscar.input.value.trim().toLowerCase();
+      var est = filtro.value;
+      var visibles = claves.filter(function (k) {
+        if (est && k.estado !== est) return false;
+        if (!q) return true;
+        var u = k.usuario || {};
+        return [k.etiqueta, k.nota, u.usuario, u.nombre].some(function (t) { return t && String(t).toLowerCase().indexOf(q) !== -1; });
+      });
+      vaciar(cuerpo);
+      visibles.forEach(function (k) {
+        var u = k.usuario;
+        cuerpo.appendChild(el("tr", {},
+          el("td", {}, el("div", {}, k.etiqueta || "(código inicial)"), k.nota ? el("div", { class: "nota" }, k.nota) : null),
+          el("td", { class: "mono nowrap" }, k.vista || "—"),
+          el("td", {}, insignia(k.estado)),
+          el("td", {}, u ? [el("div", {}, u.nombre), el("div", { class: "nota" }, "@" + u.usuario)] : "—"),
+          el("td", { class: "nowrap" }, fmtFecha(k.creado)),
+          el("td", { class: "nowrap" }, k.estado === "usada" ? fmtFecha(k.usado_en) : k.estado === "revocada" ? "Revocada " + fmtFecha(k.revocado_en) : "—"),
+          el("td", {}, k.creado_por_email || "—"),
+          accion(k)));
+      });
+      cuenta.textContent = visibles.length + " de " + claves.length;
+      vacio.hidden = visibles.length > 0;
+      vacio.textContent = claves.length ? "Ninguna clave coincide con la búsqueda." : "Todavía no hay claves.";
+    }
+
+    function cargar() {
+      aviso.textContent = "";
+      return api("admin_listar_claves").then(function (r) {
+        if (g !== generacion) return;
+        if (!r.ok) { aviso.textContent = msg(r); vacio.hidden = false; vacio.textContent = "No se pudieron cargar las claves."; return; }
+        claves = r.claves || [];
+        pintar();
+      });
+    }
+
+    buscar.input.addEventListener("input", pintar);
+    filtro.addEventListener("change", pintar);
+    actualizarBtn.addEventListener("click", cargar);
+    cargar();
+  }
+
+  /* ---------- Arranque ---------- */
+  function arrancar() {
+    if (!window.supabase || !cfg.url || !cfg.clave) {
+      pantalla(el("h1", { class: "gate-prompt" }, "Falta configurar el panel"), el("p", { class: "muted" }, "Revisa js/config.js."));
+      return;
+    }
+    if (!sb) {
+      sb = window.supabase.createClient(cfg.url, cfg.clave, {
+        auth: { flowType: "pkce", persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, storageKey: "panel-admin-auth" }
+      });
+      sb.auth.onAuthStateChange(function (evento) {
+        // Sin llamar a supabase aquí dentro (puede bloquear): solo se muestra el acceso.
+        if (evento === "SIGNED_OUT" && admin) { admin = null; setTimeout(function () { mostrarLogin(); }, 0); }
+      });
+    }
+    var huboError = /[?&#](error|error_description)=/.test(location.search + location.hash);
+    pantallaCargando();
+    sb.auth.getSession().then(function (r) {
+      if (/[?&](code|error|error_description)=/.test(location.search)) {
+        history.replaceState(null, "", location.pathname + location.hash);
+      }
+      var sesion = r.data && r.data.session;
+      if (!sesion) { mostrarLogin(huboError ? "El inicio de sesión con Google no se completó." : ""); return; }
+      return continuarConSesion();
+    }, function () { pantallaError("No se pudo leer la sesión."); });
+  }
+
+  arrancar();
+})();

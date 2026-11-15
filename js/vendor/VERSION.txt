@@ -1,0 +1,2 @@
+@supabase/supabase-js 2.119.0 (MIT). Copiado sin cambios de https://www.npmjs.com/package/@supabase/supabase-js
+Huella npm del paquete: sha512-MKP49G6bJbPhvsZDegZ/IXS/ITApPgplDCF5+F65KZ5kIArS5Y90WFxwvWYALx2bsxdrSuHvkCiXHYr3dU8+sw==

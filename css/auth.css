@@ -1,0 +1,192 @@
+/* ---------- Pantalla de acceso (diálogo acrílico de Windows 11) ---------- */
+html.gate-open body { overflow: hidden; }
+html.gate-open body > *:not(.gate) { visibility: hidden; }
+
+.gate {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  overflow-y: auto;
+  background: var(--gate-bg);
+}
+
+.gate-card {
+  width: min(100%, 440px);
+  margin: auto;
+  padding: 24px;
+  background: var(--flyout);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-dialog);
+}
+
+@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .gate-card {
+    background: var(--flyout-glass);
+    -webkit-backdrop-filter: blur(40px) saturate(1.25);
+    backdrop-filter: blur(40px) saturate(1.25);
+  }
+}
+
+.gate-card section[hidden] { display: none; }
+
+.gate-prompt {
+  margin-bottom: 16px;
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.gate-btn {
+  width: 100%;
+  min-height: 32px;
+  border: 1px solid var(--accent-border);
+  border-bottom-color: var(--accent-border-bottom);
+  border-radius: var(--radius-sm);
+  background: var(--accent);
+  color: var(--on-accent);
+  font: inherit;
+  cursor: pointer;
+  transition: background .083s linear;
+}
+.gate-btn:hover { background: var(--accent-2); }
+.gate-btn:active { background: var(--accent-3); }
+.gate-btn:disabled { opacity: .6; cursor: progress; }
+
+/* Botón de texto (hipervínculo de Windows 11) */
+.gate-link {
+  display: block;
+  margin: 12px auto 0;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  cursor: pointer;
+}
+.gate-link:hover { background: var(--subtle-hover); }
+.gate-link:active { background: var(--subtle-active); }
+
+.gate-sep {
+  margin-top: 12px;
+  padding-top: 4px;
+  border-top: 1px solid var(--border);
+}
+
+/* ---------- Casillas de texto (TextBox de Windows 11) ---------- */
+.f-group { margin-bottom: 16px; }
+
+.f-label {
+  display: block;
+  margin-bottom: 6px;
+}
+
+.f-box {
+  display: flex;
+  align-items: center;
+  min-height: 32px;
+  background: var(--field);
+  border: 1px solid var(--field-border);
+  border-bottom-color: var(--field-border-bottom);
+  border-radius: var(--radius-sm);
+  transition: background .083s linear;
+}
+.f-box:hover { background: var(--field-hover); }
+.f-box:focus-within {
+  background: var(--field-focus);
+  border-bottom-color: var(--accent);
+  box-shadow: inset 0 -1px 0 var(--accent);
+}
+
+.f-input {
+  flex: 1;
+  min-width: 0;
+  height: 30px;
+  padding: 0 10px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+}
+.f-input:focus-visible { outline: 0; }
+
+.f-reveal {
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 24px;
+  margin-right: 3px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+.f-reveal:hover { background: var(--subtle-hover); }
+.f-reveal:active { background: var(--subtle-active); }
+.f-reveal svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.f-hint {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.f-error {
+  min-height: 16px;
+  margin-bottom: 8px;
+  font-size: 12px;
+  color: var(--danger);
+}
+.f-error.ok { color: var(--ok); }
+
+/* ---------- Restricciones para invitados ---------- */
+.side-btn.locked { opacity: .7; }
+
+.side-btn .lock {
+  position: absolute;
+  top: 3px;
+  left: calc((var(--btn) - var(--icon)) / 2 + var(--icon) - 7px);
+  display: grid;
+  place-items: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--flyout);
+  color: var(--text);
+}
+.side-btn .lock svg {
+  width: 9px;
+  height: 9px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+html.guest body[data-acceso="miembro"] main { display: none; }
+
+.locked-main {
+  width: 100%;
+  max-width: var(--content-w);
+  margin: 0 auto;
+  padding: 1rem 1.5rem 2rem;
+}
+.locked-text { margin-bottom: 1rem; color: var(--muted); }
