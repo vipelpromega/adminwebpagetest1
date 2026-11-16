@@ -12,7 +12,7 @@ Página aparte para **crear claves de registro** y ver el estado del sistema de 
 - Las claves en claro nunca se guardan: solo su SHA-256. Se muestran una única vez al crearlas.
 
 ## Secciones
-Panel · Estado (en vivo) · Autenticación (crear claves) · Perfiles (todas las claves) ·
+Panel · Estado (en vivo) · Autenticación (crear claves) · Perfiles (todas las claves, con botón Borrar) ·
 Consola / Registros / Red (próximamente).
 
 ## Formato de la clave
@@ -22,7 +22,7 @@ Consola / Registros / Red (próximamente).
 3. 16 hex aleatorios generados por el servidor (esta es la parte secreta).
 
 ## Puesta en marcha
-Ver la guía paso a paso que te dio Claude: Google Cloud OAuth → Supabase (proveedor Google, URL de
+Ver la guía paso a paso que te dio Claude: GitHub OAuth App → Supabase (proveedor GitHub, URL de
 redirección, MFA TOTP) → hosting (Cloudflare Pages usa `_headers`) → ejecutar `supabase/schema.sql`
 del repo público → entrar → copiar tu ID → `insert into public.admins ...`.
 Edita `js/config.js` (`sitioPublico`) para ver el estado de la web pública.

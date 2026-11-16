@@ -60,7 +60,6 @@
 }
 .badge.sin_usar { color: var(--accent); border-color: var(--accent); }
 .badge.usada { color: var(--ok); border-color: var(--ok); }
-.badge.revocada { color: var(--danger); border-color: var(--danger); }
 
 /* ---------- Estado en vivo ---------- */
 .en-vivo { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
@@ -142,7 +141,6 @@ table.tabla { width: 100%; border-collapse: collapse; }
 .tabla th, .tabla td { padding: 10px 14px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--border); }
 .tabla th { color: var(--muted); font-size: 12px; font-weight: 600; white-space: nowrap; }
 .tabla tr:last-child td { border-bottom: 0; }
-.tabla .nota { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
 .tabla .nowrap { white-space: nowrap; }
 .btn.pequeno { min-height: 28px; padding: 0 12px; }
 .confirmar { display: inline-flex; gap: 6px; align-items: center; }

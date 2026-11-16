@@ -1,6 +1,6 @@
 // Panel de administración. Acceso: Google + verificación en dos pasos (TOTP).
 // Toda autorización real se comprueba en el servidor (supabase/schema.sql, funciones admin_*);
-// esta página solo muestra la interfaz. Los datos que vienen del servidor (nombres, notas...)
+// esta página solo muestra la interfaz. Los datos que vienen del servidor (nombres, correos...)
 // se insertan siempre como TEXTO, nunca como HTML.
 (function () {
   "use strict";
@@ -51,9 +51,7 @@
   function msg(r) {
     switch (r && r.error) {
       case "nombre_formato": return "El nombre debe tener entre 2 y 80 caracteres y al menos una letra.";
-      case "nota_formato": return "La nota no puede pasar de 200 caracteres.";
       case "no_encontrada": return "Esa clave ya no existe.";
-      case "ya_usada": return "Esa clave ya fue usada: no se puede revocar.";
       case "no_autorizado": return "Tu cuenta no está autorizada.";
       case "permiso": return "El servidor rechazó la petición.";
       case "sin_script": return "El servidor no está listo: falta ejecutar supabase/schema.sql en Supabase.";
@@ -151,7 +149,6 @@
     var error = el("p", { class: "f-error", role: "alert" }, mensaje || "");
     pantalla(
       el("h1", { class: "gate-prompt" }, "Panel de administración"),
-      el("p", { class: "muted" }, "Acceso restringido: solo cuentas autorizadas."),
       el("button", {
         type: "button", class: "gate-btn", onclick: function () {
           sb.auth.signInWithOAuth({
@@ -311,8 +308,8 @@
     { id: "estado", nombre: "Estado", sub: "Estado de la web y de la base de datos, en vivo", render: vistaEstado },
     { id: "consola", nombre: "Consola", sub: "Comandos seguros", render: function (c) { proximamente(c, "Consola", ["Comandos predefinidos y seguros (sin SQL libre).", "Por ejemplo: limpiar sesiones caducadas o liberar bloqueos."]); }, pronto: true },
     { id: "autenticacion", nombre: "Autenticación", sub: "Crear claves de registro", render: vistaAutenticacion },
-    { id: "perfiles", nombre: "Perfiles", sub: "Todas las claves, sus usuarios y su estado", render: vistaPerfiles },
-    { id: "registros", nombre: "Registros", sub: "Historial de acciones", render: function (c) { proximamente(c, "Registros", ["Historial de quién creó o revocó cada clave y cuándo.", "El servidor ya guarda estos eventos; falta la pantalla para consultarlos."]); }, pronto: true },
+    { id: "perfiles", nombre: "Perfiles", sub: "Todas las claves y su estado", render: vistaPerfiles },
+    { id: "registros", nombre: "Registros", sub: "Historial de acciones", render: function (c) { proximamente(c, "Registros", ["Historial de quién creó o borró cada clave y cuándo.", "El servidor ya guarda estos eventos; falta la pantalla para consultarlos."]); }, pronto: true },
     { id: "red", nombre: "Red", sub: "Conexiones e intentos de acceso", render: function (c) { proximamente(c, "Red", ["IP que fallaron o fueron bloqueadas al intentar entrar.", "Las redes internas de la base de datos solo se ven en el panel de Supabase."]); }, pronto: true }
   ];
 
@@ -400,15 +397,15 @@
   }
 
   function insignia(estado) {
-    var texto = { sin_usar: "Sin usar", usada: "Usada", revocada: "Revocada" }[estado] || estado;
+    var texto = { sin_usar: "Sin usar", usada: "Usado" }[estado] || estado;
     return el("span", { class: "badge " + estado }, texto);
   }
 
   function vistaPanel(c, g) {
-    var s = { sin: tarjetaStat("Claves sin usar"), usadas: tarjetaStat("Claves usadas"), rev: tarjetaStat("Claves revocadas"), cuentas: tarjetaStat("Cuentas registradas") };
+    var s = { sin: tarjetaStat("Claves sin usar"), usadas: tarjetaStat("Claves usadas"), cuentas: tarjetaStat("Cuentas registradas") };
     var lista = el("div", { class: "lista-simple" }, el("div", { class: "fila muted" }, "Cargando…"));
     c.appendChild(el("div", { class: "vista" },
-      el("div", { class: "stats" }, s.sin.nodo, s.usadas.nodo, s.rev.nodo, s.cuentas.nodo),
+      el("div", { class: "stats" }, s.sin.nodo, s.usadas.nodo, s.cuentas.nodo),
       el("div", { class: "fila-botones" }, el("a", { class: "btn", href: "#/autenticacion" }, "Crear una clave")),
       el("h2", { class: "grupo-titulo" }, "Últimas claves"),
       lista));
@@ -419,17 +416,16 @@
       if (est.ok) {
         s.sin.num.textContent = est.claves_sin_usar;
         s.usadas.num.textContent = est.claves_usadas;
-        s.rev.num.textContent = est.claves_revocadas;
         s.cuentas.num.textContent = est.usuarios;
       } else {
-        [s.sin, s.usadas, s.rev, s.cuentas].forEach(function (x) { x.num.textContent = "—"; });
+        [s.sin, s.usadas, s.cuentas].forEach(function (x) { x.num.textContent = "—"; });
       }
       vaciar(lista);
       if (!cl.ok) { lista.appendChild(el("div", { class: "fila" }, msg(cl))); return; }
       if (!cl.claves.length) { lista.appendChild(el("div", { class: "fila muted" }, "Todavía no hay claves.")); return; }
       cl.claves.slice(0, 5).forEach(function (k) {
         lista.appendChild(el("div", { class: "fila" },
-          el("div", {}, el("div", {}, k.etiqueta || "(código inicial)"),
+          el("div", {}, el("div", {}, k.etiqueta),
             el("div", { class: "sub" }, "Creada " + fmtFecha(k.creado))),
           insignia(k.estado)));
       });
@@ -537,7 +533,6 @@
   /* ---------- Autenticación: crear claves ---------- */
   function vistaAutenticacion(c, g) {
     var nombre = campoTexto({ id: "nombre", etiqueta: "Nombre de identificación:", max: 80, ayuda: "Por ejemplo: YAUYO RAMOS FABIANO LEANDRO" });
-    var nota = campoTexto({ id: "nota", etiqueta: "Nota (opcional):", max: 200 });
     var error = el("p", { class: "f-error", role: "alert" });
     var boton = el("button", { type: "submit", class: "btn" }, "Crear clave");
     var resultado = el("div", { class: "vista" });
@@ -547,7 +542,7 @@
 
     var form = el("form", { novalidate: true, class: "card", autocomplete: "off" },
       el("h2", {}, "Nueva clave"),
-      nombre.grupo, nota.grupo,
+      nombre.grupo,
       el("p", { class: "f-hint sin-margen" }, "Se agregarán más campos con el tiempo."),
       error, boton);
 
@@ -605,12 +600,11 @@
       error.textContent = "";
       if (!Clave.nombreValido(nombre.input.value)) { error.textContent = msg({ error: "nombre_formato" }); return; }
       boton.disabled = true;
-      api("admin_crear_clave", { p_nombre: nombre.input.value.trim(), p_nota: nota.input.value.trim() || null }).then(function (r) {
+      api("admin_crear_clave", { p_nombre: nombre.input.value.trim() }).then(function (r) {
         boton.disabled = false;
         if (g !== generacion) return;
         if (!r.ok) { error.textContent = msg(r); return; }
         nombre.input.value = "";
-        nota.input.value = "";
         recalcular();
         mostrarResultado(r);
       });
@@ -638,11 +632,11 @@
   function vistaPerfiles(c, g) {
     var claves = [];
     var buscar = campoTexto({ id: "buscar", max: 80 });
-    buscar.input.setAttribute("placeholder", "Buscar por nombre, nota o usuario");
+    buscar.input.setAttribute("placeholder", "Buscar por nombre de identificación");
     buscar.input.setAttribute("aria-label", "Buscar");
     var filtro = el("select", { class: "f-select", "aria-label": "Filtrar por estado" },
       el("option", { value: "" }, "Todas"), el("option", { value: "sin_usar" }, "Sin usar"),
-      el("option", { value: "usada" }, "Usadas"), el("option", { value: "revocada" }, "Revocadas"));
+      el("option", { value: "usada" }, "Usadas"));
     var cuenta = el("span", { class: "muted" }, "");
     var actualizarBtn = el("button", { type: "button", class: "btn secondary pequeno" }, "Actualizar");
     var aviso = el("p", { class: "f-error", role: "alert" });
@@ -655,30 +649,29 @@
       aviso,
       el("div", { class: "tabla-envoltorio" },
         el("table", { class: "tabla" },
-          el("thead", {}, el("tr", {}, ["Identificación", "Clave", "Estado", "Usuario", "Creada", "Usada", "Creada por", ""].map(function (t) { return el("th", {}, t); }))),
+          el("thead", {}, el("tr", {}, ["Nombre de identificación", "Clave", "Estado", "Fecha de creación", "Fecha de uso", "Creado por", ""].map(function (t) { return el("th", {}, t); }))),
           cuerpo),
         vacio)));
 
     function accion(k) {
       var celda = el("td", { class: "nowrap" });
-      if (k.estado !== "sin_usar") return celda;
-      var revocar = el("button", { type: "button", class: "btn secondary pequeno" }, "Revocar");
-      revocar.addEventListener("click", function () {
+      var borrar = el("button", { type: "button", class: "btn secondary pequeno" }, "Borrar");
+      borrar.addEventListener("click", function () {
         vaciar(celda);
-        var si = el("button", { type: "button", class: "btn danger pequeno" }, "Sí, revocar");
+        var si = el("button", { type: "button", class: "btn danger pequeno" }, "Sí, borrar");
         var no = el("button", { type: "button", class: "btn secondary pequeno" }, "No");
-        no.addEventListener("click", function () { vaciar(celda); celda.appendChild(revocar); });
+        no.addEventListener("click", function () { vaciar(celda); celda.appendChild(borrar); });
         si.addEventListener("click", function () {
           si.disabled = true;
-          api("admin_revocar_clave", { p_id: k.id }).then(function (r) {
+          api("admin_borrar_clave", { p_id: k.id }).then(function (r) {
             if (g !== generacion) return;
-            if (!r.ok) { aviso.textContent = msg(r); }
+            if (!r.ok) aviso.textContent = msg(r);
             cargar();
           });
         });
         celda.appendChild(el("span", { class: "confirmar" }, "¿Seguro?", si, no));
       });
-      celda.appendChild(revocar);
+      celda.appendChild(borrar);
       return celda;
     }
 
@@ -687,20 +680,16 @@
       var est = filtro.value;
       var visibles = claves.filter(function (k) {
         if (est && k.estado !== est) return false;
-        if (!q) return true;
-        var u = k.usuario || {};
-        return [k.etiqueta, k.nota, u.usuario, u.nombre].some(function (t) { return t && String(t).toLowerCase().indexOf(q) !== -1; });
+        return !q || String(k.etiqueta || "").toLowerCase().indexOf(q) !== -1;
       });
       vaciar(cuerpo);
       visibles.forEach(function (k) {
-        var u = k.usuario;
         cuerpo.appendChild(el("tr", {},
-          el("td", {}, el("div", {}, k.etiqueta || "(código inicial)"), k.nota ? el("div", { class: "nota" }, k.nota) : null),
+          el("td", {}, k.etiqueta),
           el("td", { class: "mono nowrap" }, k.vista || "—"),
           el("td", {}, insignia(k.estado)),
-          el("td", {}, u ? [el("div", {}, u.nombre), el("div", { class: "nota" }, "@" + u.usuario)] : "—"),
           el("td", { class: "nowrap" }, fmtFecha(k.creado)),
-          el("td", { class: "nowrap" }, k.estado === "usada" ? fmtFecha(k.usado_en) : k.estado === "revocada" ? "Revocada " + fmtFecha(k.revocado_en) : "—"),
+          el("td", { class: "nowrap" }, k.estado === "usada" ? fmtFecha(k.usado_en) : "—"),
           el("td", {}, k.creado_por_email || "—"),
           accion(k)));
       });
