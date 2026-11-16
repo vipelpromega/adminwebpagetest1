@@ -9,17 +9,19 @@ Página aparte para **crear claves de registro** y ver el estado del sistema de 
   La seguridad real está en el servidor: aunque alguien abra esta página, las funciones `admin_*`
   rechazan a cualquiera que no esté en la lista o no haya pasado el 2.º paso.
 - CSP estricta, sin indexar, cierre de sesión por inactividad (15 min), todo dato se muestra como texto.
-- Las claves en claro nunca se guardan: solo su SHA-256. Se muestran una única vez al crearlas.
+- Las claves nunca se guardan en claro (AES-256 + HMAC). Al borrar una clave usada se borra también la cuenta.
 
 ## Secciones
 Panel · Estado (en vivo) · Autenticación (crear claves) · Perfiles (todas las claves, con botón Borrar) ·
-Consola / Registros / Red (próximamente).
+Consola (comandos seguros) · Registros · Red (intentos fallidos, bloqueos, latencia).
 
 ## Formato de la clave
-`INICIALES-HUELLA-ALEATORIO`, p. ej. `5952-464C-0F66-XXXX-XXXX-XXXX-XXXX`
+`INICIALES-HUELLA-ALEATORIO`, p. ej. `5952-464C-0F66-` + 8 grupos de 4 hex
 1. Primera letra de cada palabra (máx. 6) → ASCII/UTF-8 → hexadecimal.
 2. Huella = 4 primeros caracteres del SHA-256 del nombre completo en hexadecimal.
-3. 16 hex aleatorios generados por el servidor (esta es la parte secreta).
+3. 32 hex aleatorios (128 bits) generados por el servidor: esta es la parte secreta.
+
+En el servidor la clave se guarda **cifrada con AES-256** y se busca con una huella **HMAC-SHA256**; los secretos de cifrado viven en una tabla que ninguna página puede leer. El ojo de Perfiles la descifra bajo petición y queda en Registros.
 
 ## Puesta en marcha
 Ver la guía paso a paso que te dio Claude: GitHub OAuth App → Supabase (proveedor GitHub, URL de

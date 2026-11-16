@@ -88,7 +88,7 @@
         nombreHex: nombreHex,
         huella: huella,
         prefijo: prefijo,
-        vista: prefijo ? prefijo + "-••••-••••-••••-••••" : "",
+        vista: prefijo ? prefijo + "-••••-••••-••••-••••-••••-••••-••••-••••" : "",
         valido: nombreValido(nombre)
       };
     });

@@ -60,6 +60,7 @@
 }
 .badge.sin_usar { color: var(--accent); border-color: var(--accent); }
 .badge.usada { color: var(--ok); border-color: var(--ok); }
+.badge.bloqueo { color: var(--danger); border-color: var(--danger); }
 
 /* ---------- Estado en vivo ---------- */
 .en-vivo { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
@@ -146,10 +147,45 @@ table.tabla { width: 100%; border-collapse: collapse; }
 .confirmar { display: inline-flex; gap: 6px; align-items: center; }
 .vacio { padding: 24px; text-align: center; color: var(--muted); }
 
-.proximamente ul { margin: 8px 0 0 18px; color: var(--muted); }
 
-.side-btn.pronto { opacity: .75; }
 
 @media (max-width: 480px) {
   .qr { width: 170px; height: 170px; }
 }
+
+/* Clave con ojo */
+.celda-clave { white-space: nowrap; }
+.celda-clave .revelada { color: var(--accent); user-select: all; }
+.ojo {
+  display: inline-grid; place-items: center; width: 28px; height: 28px; margin-left: 6px;
+  vertical-align: middle; color: var(--muted); background: transparent;
+  border: 0; border-radius: var(--radius-sm); cursor: pointer;
+}
+.ojo:hover { background: var(--subtle-hover); color: var(--text); }
+.ojo:active { background: var(--subtle-active); }
+.ojo svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.ojo:disabled { opacity: .5; cursor: progress; }
+.detalle-celda { overflow-wrap: anywhere; color: var(--muted); }
+
+/* Consola */
+.consola {
+  display: flex; flex-direction: column; height: min(62vh, 560px);
+  background: #0c0c0c; color: #cccccc; border: 1px solid var(--border);
+  border-radius: var(--radius); overflow: hidden;
+  font-family: "Cascadia Mono", Consolas, "SF Mono", Menlo, monospace; font-size: 13px;
+}
+.consola-salida { flex: 1; padding: 12px 14px; overflow-y: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
+.consola-linea.tenue { color: #8a8a8a; }
+.consola-linea.eco { color: #60cdff; margin-top: 6px; }
+.consola-linea.error { color: #ff99a4; }
+.consola-form { display: flex; align-items: center; gap: 8px; padding: 8px 14px; border-top: 1px solid #2a2a2a; }
+.consola-prompt { color: #6ccb5f; }
+.consola-entrada {
+  flex: 1; min-width: 0; padding: 4px 0; color: #fff; font: inherit;
+  background: transparent; border: 0; outline: 0; caret-color: #60cdff;
+}
+
+/* Gráfica de latencia */
+.grafica { display: block; width: 100%; height: 90px; }
+.grafica-linea { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; vector-effect: non-scaling-stroke; }
+.mono-chico { font-family: "Cascadia Mono", Consolas, monospace; font-size: 20px; overflow-wrap: anywhere; }

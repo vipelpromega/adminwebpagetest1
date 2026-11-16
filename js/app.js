@@ -81,6 +81,10 @@
     menu: '<path d="M4 6h16M4 12h16M4 18h16"/>',
     salir: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/>'
   };
+  var ICONOS_OJO = {
+    abierto: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>',
+    tachado: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3l18 18"/><path d="M10.6 6.1A10.6 10.6 0 0 1 12 6c6.5 0 10 6 10 6a17 17 0 0 1-3.2 3.9"/><path d="M6.6 6.7C3.7 8.4 2 12 2 12s3.5 6 10 6c1.6 0 3-.3 4.3-.9"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>'
+  };
   function icono(nombre) {
     var s = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     s.setAttribute("viewBox", "0 0 24 24");
@@ -306,11 +310,11 @@
   var VISTAS = [
     { id: "panel", nombre: "Panel", sub: "Resumen general", render: vistaPanel },
     { id: "estado", nombre: "Estado", sub: "Estado de la web y de la base de datos, en vivo", render: vistaEstado },
-    { id: "consola", nombre: "Consola", sub: "Comandos seguros", render: function (c) { proximamente(c, "Consola", ["Comandos predefinidos y seguros (sin SQL libre).", "Por ejemplo: limpiar sesiones caducadas o liberar bloqueos."]); }, pronto: true },
+    { id: "consola", nombre: "Consola", sub: "Comandos seguros (no hay SQL libre)", render: vistaConsola },
     { id: "autenticacion", nombre: "Autenticación", sub: "Crear claves de registro", render: vistaAutenticacion },
     { id: "perfiles", nombre: "Perfiles", sub: "Todas las claves y su estado", render: vistaPerfiles },
-    { id: "registros", nombre: "Registros", sub: "Historial de acciones", render: function (c) { proximamente(c, "Registros", ["Historial de quién creó o borró cada clave y cuándo.", "El servidor ya guarda estos eventos; falta la pantalla para consultarlos."]); }, pronto: true },
-    { id: "red", nombre: "Red", sub: "Conexiones e intentos de acceso", render: function (c) { proximamente(c, "Red", ["IP que fallaron o fueron bloqueadas al intentar entrar.", "Las redes internas de la base de datos solo se ven en el panel de Supabase."]); }, pronto: true }
+    { id: "registros", nombre: "Registros", sub: "Historial de acciones", render: vistaRegistros },
+    { id: "red", nombre: "Red", sub: "Intentos fallidos, bloqueos y latencia", render: vistaRed }
   ];
 
   function construirApp() {
@@ -326,9 +330,8 @@
     enlaces = {};
     VISTAS.forEach(function (v) {
       var a = el("a", {
-        class: "side-btn" + (v.pronto ? " pronto" : ""), href: "#/" + v.id,
-        "aria-label": v.nombre + (v.pronto ? " (próximamente)" : ""),
-        "data-tooltip": v.nombre + (v.pronto ? " (próximamente)" : "")
+        class: "side-btn", href: "#/" + v.id,
+        "aria-label": v.nombre, "data-tooltip": v.nombre
       }, icono(v.id), el("span", { class: "label" }, v.nombre));
       enlaces[v.id] = a;
       nav.appendChild(a);
@@ -383,17 +386,23 @@
     v.render(principal, g);
   }
 
-  function proximamente(c, nombre, lineas) {
-    c.appendChild(el("section", { class: "card proximamente" },
-      el("h2", {}, nombre + ": próximamente"),
-      el("p", { class: "muted" }, "Esta sección llegará en una próxima versión. Incluirá:"),
-      el("ul", {}, lineas.map(function (t) { return el("li", {}, t); }))));
-  }
-
   /* ---------- Panel ---------- */
   function tarjetaStat(etiqueta) {
     var num = el("div", { class: "stat-num" }, "…");
     return { nodo: el("div", { class: "stat" }, num, el("div", { class: "stat-etq" }, etiqueta)), num: num };
+  }
+
+  // Número que sube hasta su valor (si no hay movimiento reducido)
+  function contar(nodo, valor) {
+    var fin = Number(valor);
+    var reducido = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (!isFinite(fin) || reducido || fin === 0) { nodo.textContent = String(valor); return; }
+    var t0 = performance.now(), dur = 600;
+    (function paso(t) {
+      var k = Math.min(1, (t - t0) / dur);
+      nodo.textContent = String(Math.round(fin * (1 - Math.pow(1 - k, 3))));
+      if (k < 1) requestAnimationFrame(paso);
+    })(t0);
   }
 
   function insignia(estado) {
@@ -403,7 +412,7 @@
 
   function vistaPanel(c, g) {
     var s = { sin: tarjetaStat("Claves sin usar"), usadas: tarjetaStat("Claves usadas"), cuentas: tarjetaStat("Cuentas registradas") };
-    var lista = el("div", { class: "lista-simple" }, el("div", { class: "fila muted" }, "Cargando…"));
+    var lista = el("div", { class: "lista-simple" }, el("div", { class: "fila muted cargando" }, "Cargando…"));
     c.appendChild(el("div", { class: "vista" },
       el("div", { class: "stats" }, s.sin.nodo, s.usadas.nodo, s.cuentas.nodo),
       el("div", { class: "fila-botones" }, el("a", { class: "btn", href: "#/autenticacion" }, "Crear una clave")),
@@ -414,9 +423,9 @@
       if (g !== generacion) return;
       var est = rs[0], cl = rs[1];
       if (est.ok) {
-        s.sin.num.textContent = est.claves_sin_usar;
-        s.usadas.num.textContent = est.claves_usadas;
-        s.cuentas.num.textContent = est.usuarios;
+        contar(s.sin.num, est.claves_sin_usar);
+        contar(s.usadas.num, est.claves_usadas);
+        contar(s.cuentas.num, est.usuarios);
       } else {
         [s.sin, s.usadas, s.cuentas].forEach(function (x) { x.num.textContent = "—"; });
       }
@@ -575,8 +584,10 @@
         paso(5, "Nombre completo → ASCII → hexadecimal", el("div", { class: "valor mono" }, p.nombreHex)),
         paso(6, "Huella del nombre (SHA-256 del paso 5, 4 primeros caracteres)", el("div", { class: "valor mono" }, p.huella)),
         paso(7, "Parte aleatoria (la genera el servidor)",
-          el("div", { class: "valor mono" }, "•••• •••• •••• ••••"),
-          el("div", { class: "f-hint" }, "Esta parte es la que hace segura la clave: nadie puede calcularla a partir del nombre.")),
+          el("div", { class: "valor mono" }, "•••• •••• •••• •••• •••• •••• •••• ••••"),
+          el("div", { class: "f-hint" }, "32 caracteres hexadecimales al azar (128 bits). Es la parte que hace segura la clave: nadie puede calcularla a partir del nombre.")),
+        paso("🔒", "Guardado en el servidor",
+          el("div", { class: "f-hint" }, "La clave se cifra con AES-256 y se busca por una huella HMAC-SHA256. Solo el ojo de Perfiles puede descifrarla, y cada vez queda registrado.")),
         paso(8, "Clave final (vista previa)", el("div", { class: "valor mono" }, p.vista))));
     }
 
@@ -653,6 +664,40 @@
           cuerpo),
         vacio)));
 
+    function celdaClave(k) {
+      var texto = el("span", { class: "mono" }, k.vista || "—");
+      var ojo = el("button", { type: "button", class: "ojo", "aria-pressed": "false", "aria-label": "Mostrar la clave", "data-tooltip": "Mostrar la clave" });
+      ojo.innerHTML = ICONOS_OJO.abierto;
+      var timer = null;
+      function ocultar() {
+        clearTimeout(timer);
+        texto.textContent = k.vista || "—";
+        texto.classList.remove("revelada");
+        ojo.setAttribute("aria-pressed", "false");
+        ojo.setAttribute("aria-label", "Mostrar la clave");
+        ojo.setAttribute("data-tooltip", "Mostrar la clave");
+        ojo.innerHTML = ICONOS_OJO.abierto;
+      }
+      ojo.addEventListener("click", function () {
+        if (ojo.getAttribute("aria-pressed") === "true") { ocultar(); return; }
+        ojo.disabled = true;
+        api("admin_ver_clave", { p_id: k.id }).then(function (r) {
+          ojo.disabled = false;
+          if (g !== generacion) return;
+          if (!r.ok) { aviso.textContent = msg(r); return; }
+          texto.textContent = r.codigo;
+          texto.classList.add("revelada");
+          ojo.setAttribute("aria-pressed", "true");
+          ojo.setAttribute("aria-label", "Ocultar la clave");
+          ojo.setAttribute("data-tooltip", "Ocultar la clave");
+          ojo.innerHTML = ICONOS_OJO.tachado;
+          timer = setTimeout(ocultar, 20000); // se vuelve a ocultar sola
+        });
+      });
+      limpiezas.push(function () { clearTimeout(timer); });
+      return el("td", { class: "celda-clave" }, texto, ojo);
+    }
+
     function accion(k) {
       var celda = el("td", { class: "nowrap" });
       var borrar = el("button", { type: "button", class: "btn secondary pequeno" }, "Borrar");
@@ -669,7 +714,8 @@
             cargar();
           });
         });
-        celda.appendChild(el("span", { class: "confirmar" }, "¿Seguro?", si, no));
+        celda.appendChild(el("span", { class: "confirmar" },
+          k.estado === "usada" ? "¿Seguro? Se borra también la cuenta." : "¿Seguro?", si, no));
       });
       celda.appendChild(borrar);
       return celda;
@@ -686,7 +732,7 @@
       visibles.forEach(function (k) {
         cuerpo.appendChild(el("tr", {},
           el("td", {}, k.etiqueta),
-          el("td", { class: "mono nowrap" }, k.vista || "—"),
+          celdaClave(k),
           el("td", {}, insignia(k.estado)),
           el("td", { class: "nowrap" }, fmtFecha(k.creado)),
           el("td", { class: "nowrap" }, k.estado === "usada" ? fmtFecha(k.usado_en) : "—"),
@@ -712,6 +758,199 @@
     filtro.addEventListener("change", pintar);
     actualizarBtn.addEventListener("click", cargar);
     cargar();
+  }
+
+
+  /* ---------- Consola ---------- */
+  function vistaConsola(c, g) {
+    var salida = el("div", { class: "consola-salida", role: "log", "aria-live": "polite", tabindex: "0" });
+    var entrada = el("input", {
+      class: "consola-entrada", type: "text", maxlength: "100", autocomplete: "off",
+      spellcheck: "false", autocapitalize: "off", "aria-label": "Comando"
+    });
+    var historial = [], pos = 0, ocupado = false;
+    function linea(texto, clase) {
+      salida.appendChild(el("div", { class: "consola-linea" + (clase ? " " + clase : "") }, texto));
+      salida.scrollTop = salida.scrollHeight;
+    }
+    linea("Consola de administración. Solo hay comandos seguros: escribe «ayuda» para verlos.", "tenue");
+    linea("«cls» limpia la pantalla.", "tenue");
+
+    var form = el("form", { class: "consola-form", novalidate: true, autocomplete: "off" },
+      el("span", { class: "consola-prompt", "aria-hidden": "true" }, "›"), entrada);
+    c.appendChild(el("div", { class: "vista" }, el("div", { class: "consola" }, salida, form)));
+
+    form.addEventListener("submit", function (e) {
+      e.preventDefault();
+      var texto = entrada.value.trim();
+      if (!texto || ocupado) return;
+      entrada.value = "";
+      historial.push(texto); pos = historial.length;
+      linea("› " + texto, "eco");
+      if (texto.toLowerCase() === "cls" || texto.toLowerCase() === "clear") { vaciar(salida); return; }
+      ocupado = true;
+      api("admin_consola", { p_linea: texto }).then(function (r) {
+        ocupado = false;
+        if (g !== generacion) return;
+        if (!r.ok) { linea(msg(r), "error"); return; }
+        (r.lineas || []).forEach(function (t) { linea(String(t)); });
+        entrada.focus();
+      });
+    });
+    entrada.addEventListener("keydown", function (e) {
+      if (e.key === "ArrowUp" && historial.length) { e.preventDefault(); pos = Math.max(0, pos - 1); entrada.value = historial[pos] || ""; }
+      else if (e.key === "ArrowDown" && historial.length) { e.preventDefault(); pos = Math.min(historial.length, pos + 1); entrada.value = historial[pos] || ""; }
+    });
+    salida.addEventListener("click", function () { if (!getSelection().toString()) entrada.focus(); });
+    entrada.focus();
+  }
+
+  /* ---------- Registros ---------- */
+  var ACCIONES = {
+    acceso_admin: "Entró al panel", crear_clave: "Creó una clave", ver_clave: "Vio una clave",
+    borrar_clave: "Borró una clave", cuenta_creada: "Se creó una cuenta", consola: "Comando de consola",
+    desbloquear: "Desbloqueó"
+  };
+  function detalleTexto(d) {
+    if (!d || typeof d !== "object") return "";
+    var partes = [];
+    if (d.etiqueta) partes.push(d.etiqueta);
+    if (d.usuario) partes.push("usuario " + d.usuario);
+    if (d.comando) partes.push("comando " + d.comando);
+    if (d.cuenta_borrada) partes.push("cuenta borrada: " + d.cuenta_borrada);
+    if (d.sesiones != null) partes.push(d.sesiones + " sesiones");
+    if (d.bloqueos != null) partes.push(d.bloqueos + " bloqueos");
+    if (d.tipo) partes.push(d.tipo + ": " + (d.objetivo || ""));
+    return partes.join(" · ");
+  }
+
+  function vistaRegistros(c, g) {
+    var datos = [];
+    var filtro = el("select", { class: "f-select", "aria-label": "Filtrar por acción" }, el("option", { value: "" }, "Todas las acciones"),
+      Object.keys(ACCIONES).map(function (k) { return el("option", { value: k }, ACCIONES[k]); }));
+    var cuenta = el("span", { class: "muted" }, "");
+    var refrescar = el("button", { type: "button", class: "btn secondary pequeno" }, "Actualizar");
+    var aviso = el("p", { class: "f-error", role: "alert" });
+    var cuerpo = el("tbody");
+    var vacio = el("div", { class: "vacio cargando" }, "Cargando…");
+    c.appendChild(el("div", { class: "vista" },
+      el("div", { class: "barra-herramientas" }, filtro, refrescar, cuenta), aviso,
+      el("div", { class: "tabla-envoltorio" },
+        el("table", { class: "tabla" },
+          el("thead", {}, el("tr", {}, ["Fecha", "Quién", "Acción", "Detalle"].map(function (t) { return el("th", {}, t); }))), cuerpo),
+        vacio)));
+
+    function pintar() {
+      var f = filtro.value;
+      var v = datos.filter(function (x) { return !f || x.accion === f; });
+      vaciar(cuerpo);
+      v.forEach(function (x) {
+        cuerpo.appendChild(el("tr", {},
+          el("td", { class: "nowrap" }, fmtFecha(x.cuando)),
+          el("td", {}, x.actor_email || "Sistema / web pública"),
+          el("td", {}, ACCIONES[x.accion] || x.accion),
+          el("td", { class: "detalle-celda" }, detalleTexto(x.detalle))));
+      });
+      cuenta.textContent = v.length + " de " + datos.length;
+      vacio.hidden = v.length > 0;
+      vacio.classList.remove("cargando");
+      vacio.textContent = datos.length ? "Nada con ese filtro." : "Todavía no hay registros.";
+    }
+    function cargar() {
+      aviso.textContent = "";
+      return api("admin_registros", { p_limite: 300 }).then(function (r) {
+        if (g !== generacion) return;
+        if (!r.ok) { aviso.textContent = msg(r); vacio.hidden = false; vacio.textContent = "No se pudieron cargar los registros."; return; }
+        datos = r.registros || [];
+        pintar();
+      });
+    }
+    filtro.addEventListener("change", pintar);
+    refrescar.addEventListener("click", cargar);
+    cargar();
+  }
+
+  /* ---------- Red ---------- */
+  var TIPOS_RED = { cod: "Registro con clave", login: "Inicio de sesión", ip: "Todos los intentos desde esta IP" };
+
+  function vistaRed(c, g) {
+    var ipEl = el("div", { class: "stat-num mono-chico" }, "…");
+    var blqEl = el("div", { class: "stat-num" }, "…");
+    var latEl = el("div", { class: "stat-num" }, "…");
+    var tarjeta = function (num, etq) { return el("div", { class: "stat" }, num, el("div", { class: "stat-etq" }, etq)); };
+    var NS = "http://www.w3.org/2000/svg";
+    var svg = document.createElementNS(NS, "svg");
+    svg.setAttribute("viewBox", "0 0 400 80"); svg.setAttribute("class", "grafica"); svg.setAttribute("role", "img");
+    svg.setAttribute("aria-label", "Latencia reciente hacia el servidor");
+    var linea = document.createElementNS(NS, "polyline");
+    linea.setAttribute("class", "grafica-linea"); linea.setAttribute("points", "");
+    svg.appendChild(linea);
+    var aviso = el("p", { class: "f-error", role: "alert" });
+    var cuerpo = el("tbody");
+    var vacio = el("div", { class: "vacio cargando" }, "Cargando…");
+
+    c.appendChild(el("div", { class: "vista" },
+      el("div", { class: "stats" }, tarjeta(ipEl, "Tu IP (vista por el servidor)"), tarjeta(blqEl, "Bloqueos activos"), tarjeta(latEl, "Latencia al servidor")),
+      el("section", { class: "card" }, el("h2", {}, "Latencia en vivo"), svg,
+        el("p", { class: "f-hint" }, "Cada punto es una consulta al servidor desde este navegador.")),
+      el("h2", { class: "grupo-titulo" }, "Intentos fallidos (últimos 7 días)"), aviso,
+      el("div", { class: "tabla-envoltorio" },
+        el("table", { class: "tabla" },
+          el("thead", {}, el("tr", {}, ["Tipo", "Objetivo", "Fallos", "Estado", "Última vez", ""].map(function (t) { return el("th", {}, t); }))), cuerpo),
+        vacio)));
+
+    var muestras = [], pausado = false, enCurso = false;
+    function dibujar() {
+      var max = Math.max.apply(null, muestras.concat([100]));
+      var pts = muestras.map(function (v, i) {
+        var x = muestras.length === 1 ? 400 : (i / (muestras.length - 1)) * 400;
+        return x.toFixed(1) + "," + (74 - (v / max) * 68).toFixed(1);
+      }).join(" ");
+      linea.setAttribute("points", pts);
+    }
+    function desbloquear(i) {
+      var b = el("button", { type: "button", class: "btn secondary pequeno" }, "Desbloquear");
+      b.addEventListener("click", function () {
+        b.disabled = true;
+        api("admin_desbloquear", { p_tipo: i.tipo, p_objetivo: i.objetivo }).then(function (r) {
+          if (g !== generacion) return;
+          if (!r.ok) aviso.textContent = msg(r);
+          actualizar(true);
+        });
+      });
+      return b;
+    }
+    function actualizar(forzar) {
+      if ((enCurso || pausado || document.hidden) && !forzar) return;
+      enCurso = true;
+      api("admin_red").then(function (r) {
+        enCurso = false;
+        if (g !== generacion) return;
+        if (!r.ok) { aviso.textContent = msg(r); return; }
+        aviso.textContent = "";
+        ipEl.textContent = r.tu_ip;
+        blqEl.textContent = r.bloqueos_activos;
+        latEl.textContent = r.ms + " ms";
+        muestras.push(r.ms); if (muestras.length > 40) muestras.shift();
+        dibujar();
+        vaciar(cuerpo);
+        (r.intentos || []).forEach(function (i) {
+          cuerpo.appendChild(el("tr", {},
+            el("td", {}, TIPOS_RED[i.tipo] || i.tipo),
+            el("td", { class: "mono" }, i.objetivo),
+            el("td", {}, i.bloqueado ? "—" : String(i.fallos)),
+            el("td", {}, i.bloqueado ? el("span", { class: "badge usada bloqueo" }, "Bloqueado hasta " + fmtFecha(i.hasta)) : "Libre"),
+            el("td", { class: "nowrap" }, fmtFecha(i.actualizado)),
+            el("td", { class: "nowrap" }, (i.bloqueado || i.fallos > 0) ? desbloquear(i) : null)));
+        });
+        vacio.hidden = (r.intentos || []).length > 0;
+        vacio.classList.remove("cargando");
+        vacio.textContent = "Sin intentos fallidos. Todo tranquilo.";
+      });
+    }
+    var t = setInterval(actualizar, cfg.refrescoMs || 5000);
+    limpiezas.push(function () { clearInterval(t); });
+    actualizar(true);
   }
 
   /* ---------- Arranque ---------- */
