@@ -12,7 +12,7 @@ Página aparte para **crear claves de registro** y ver el estado del sistema de 
 - Las claves nunca se guardan en claro (AES-256 + HMAC). Al borrar una clave usada se borra también la cuenta.
 
 ## Secciones
-Panel · Estado (en vivo) · Autenticación (crear claves) · Perfiles (todas las claves, con botón Borrar) ·
+Panel · Estado (en vivo) · Autenticación (crear claves) · Perfiles (todas las claves; botón Más información y Borrar) ·
 Consola (comandos seguros) · Registros · Red (intentos fallidos, bloqueos, latencia).
 
 ## Formato de la clave
@@ -28,3 +28,7 @@ Ver la guía paso a paso que te dio Claude: GitHub OAuth App → Supabase (prove
 redirección, MFA TOTP) → hosting (Cloudflare Pages usa `_headers`) → ejecutar `supabase/schema.sql`
 del repo público → entrar → copiar tu ID → `insert into public.admins ...`.
 Edita `js/config.js` (`sitioPublico`) para ver el estado de la web pública.
+
+## Contraseña maestra (para restablecer contraseñas)
+Se fija **una sola vez** desde el SQL Editor de Supabase (ver el final de `supabase/schema.sql` del repo
+público). Se guarda con bcrypt; el panel solo puede comprobarla, nunca leerla. Tras 5 fallos se bloquea 5 minutos.

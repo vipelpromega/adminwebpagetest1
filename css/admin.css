@@ -189,3 +189,32 @@ table.tabla { width: 100%; border-collapse: collapse; }
 .grafica { display: block; width: 100%; height: 90px; }
 .grafica-linea { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; vector-effect: non-scaling-stroke; }
 .mono-chico { font-family: "Cascadia Mono", Consolas, monospace; font-size: 20px; overflow-wrap: anywhere; }
+
+/* ---------- Ventana "Más información" ---------- */
+.modal-fondo {
+  position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: 1rem;
+  background: rgba(0, 0, 0, .5); overflow-y: auto; animation: m-fundido .2s ease both;
+}
+.modal {
+  width: min(100%, 520px); margin: auto; padding: 20px;
+  background: var(--flyout); border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: var(--shadow-dialog);
+  animation: m-escala .3s var(--ease-out) both;
+}
+.modal-cab { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.modal-cab h2 { overflow-wrap: anywhere; font-size: 18px; }
+.datos { display: flex; flex-direction: column; margin: 0; }
+.dato { display: grid; grid-template-columns: 150px 1fr; gap: 12px; align-items: center; padding: 9px 0; border-bottom: 1px solid var(--border); }
+.dato dt { color: var(--muted); }
+.dato dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.dato .celda-clave { white-space: normal; }
+.reset { margin-top: 16px; padding-top: 4px; }
+.reset h3 { margin-bottom: 8px; font-size: 14px; }
+.f-ok { margin: 4px 0; color: var(--ok); }
+.f-ok:empty { display: none; }
+.avatar-adm {
+  display: inline-grid; place-items: center; width: 56px; height: 56px; overflow: hidden; border-radius: 50%;
+  background: var(--accent); color: var(--on-accent); font-family: var(--font-display); font-size: 24px; font-weight: 600;
+}
+.avatar-adm img { width: 100%; height: 100%; object-fit: cover; display: block; }
+@media (max-width: 480px) { .dato { grid-template-columns: 1fr; gap: 2px; } }

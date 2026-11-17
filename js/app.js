@@ -53,6 +53,11 @@
       case "nombre_formato": return "El nombre debe tener entre 2 y 80 caracteres y al menos una letra.";
       case "no_encontrada": return "Esa clave ya no existe.";
       case "no_autorizado": return "Tu cuenta no está autorizada.";
+      case "maestra_no_definida": return "Todavía no fijaste la contraseña maestra. Hazlo una vez en Supabase (SQL Editor); las instrucciones están al final de schema.sql.";
+      case "maestra_incorrecta": return "La contraseña maestra no es correcta.";
+      case "clave_formato": return "La contraseña nueva debe tener entre 8 y 72 caracteres.";
+      case "sin_cuenta": return "Esta clave todavía no tiene cuenta.";
+      case "espera": return "Demasiados intentos. Espera " + (r.segundos || 60) + " s.";
       case "permiso": return "El servidor rechazó la petición.";
       case "sin_script": return "El servidor no está listo: falta ejecutar supabase/schema.sql en Supabase.";
       case "red": return "No se pudo conectar con el servidor.";
@@ -639,6 +644,105 @@
     }
   }
 
+  /* ---------- Detalle de una clave (Más información) ---------- */
+  function elemAvatar(cuenta) {
+    var a = el("span", { class: "avatar-adm" });
+    if (cuenta && cuenta.avatar) { var i = el("img", { alt: "" }); i.src = cuenta.avatar; a.appendChild(i); }
+    else a.appendChild(document.createTextNode(String((cuenta && cuenta.usuario) || "?").charAt(0).toUpperCase()));
+    return a;
+  }
+
+  function abrirDetalle(k, disparador, alCambiar) {
+    var previo = document.activeElement;
+    var cuerpo = el("div", { class: "modal-cuerpo" }, el("p", { class: "muted cargando" }, "Cargando…"));
+    var cerrarBtn = el("button", { type: "button", class: "btn secondary pequeno", "aria-label": "Cerrar" }, "Cerrar");
+    var fondo = el("div", { class: "modal-fondo" },
+      el("div", { class: "modal", role: "dialog", "aria-modal": "true", "aria-label": "Más información de " + k.etiqueta },
+        el("div", { class: "modal-cab" }, el("h2", {}, k.etiqueta), cerrarBtn), cuerpo));
+    var timer = null;
+    function cerrar() {
+      clearTimeout(timer);
+      document.removeEventListener("keydown", tecla, true);
+      fondo.remove();
+      if (previo && previo.focus) previo.focus();
+    }
+    function tecla(e) { if (e.key === "Escape") { e.stopPropagation(); cerrar(); } }
+    document.addEventListener("keydown", tecla, true);
+    cerrarBtn.addEventListener("click", cerrar);
+    fondo.addEventListener("pointerdown", function (e) { if (e.target === fondo) cerrar(); });
+    limpiezas.push(cerrar);
+    raiz.appendChild(fondo);
+    cerrarBtn.focus();
+
+    api("admin_detalle_clave", { p_id: k.id }).then(function (d) {
+      if (!document.body.contains(fondo)) return;
+      vaciar(cuerpo);
+      if (!d.ok) { cuerpo.appendChild(el("p", { class: "f-error", role: "alert" }, msg(d))); return; }
+
+      // Clave con ojo
+      var texto = el("span", { class: "mono" }, d.vista);
+      var ojo = el("button", { type: "button", class: "ojo", "aria-pressed": "false", "aria-label": "Mostrar la clave", "data-tooltip": "Mostrar la clave" });
+      ojo.innerHTML = ICONOS_OJO.abierto;
+      function ocultar() {
+        clearTimeout(timer);
+        texto.textContent = d.vista; texto.classList.remove("revelada");
+        ojo.setAttribute("aria-pressed", "false"); ojo.setAttribute("aria-label", "Mostrar la clave");
+        ojo.innerHTML = ICONOS_OJO.abierto;
+      }
+      var errorClave = el("p", { class: "f-error", role: "alert" });
+      ojo.addEventListener("click", function () {
+        if (ojo.getAttribute("aria-pressed") === "true") { ocultar(); return; }
+        ojo.disabled = true;
+        api("admin_ver_clave", { p_id: k.id }).then(function (r) {
+          ojo.disabled = false;
+          if (!r.ok) { errorClave.textContent = msg(r); return; }
+          errorClave.textContent = "";
+          texto.textContent = r.codigo; texto.classList.add("revelada");
+          ojo.setAttribute("aria-pressed", "true"); ojo.setAttribute("aria-label", "Ocultar la clave");
+          ojo.innerHTML = ICONOS_OJO.tachado;
+          timer = setTimeout(ocultar, 20000);
+        });
+      });
+      function fila(etq, valor) {
+        return el("div", { class: "dato" }, el("dt", {}, etq), el("dd", {}, valor));
+      }
+      cuerpo.appendChild(el("dl", { class: "datos" },
+        fila("Clave", el("span", { class: "celda-clave" }, texto, ojo)),
+        fila("Fecha de creación", fmtFecha(d.creado)),
+        fila("Fecha de uso", d.usado_en ? fmtFecha(d.usado_en) : "Sin usar"),
+        fila("Creado por", d.creado_por_email || "—"),
+        fila("Foto de perfil", d.cuenta ? elemAvatar(d.cuenta) : "Sin cuenta todavía")));
+      cuerpo.appendChild(errorClave);
+
+      // Restablecer contraseña (necesita la contraseña maestra)
+      var sec = el("section", { class: "reset" }, el("h3", {}, "Restablecer contraseña"));
+      if (!d.cuenta) {
+        sec.appendChild(el("p", { class: "muted" }, "Esta clave todavía no se usó, así que no hay cuenta cuya contraseña restablecer."));
+      } else {
+        var maestra = campoTexto({ id: "maestra", etiqueta: "Contraseña maestra:", tipo: "password", max: 128, autocomplete: "off",
+          ayuda: "La fijaste tú en Supabase; solo tú la conoces." });
+        var nueva = campoTexto({ id: "nueva", etiqueta: "Nueva contraseña para la cuenta:", tipo: "password", max: 72, autocomplete: "new-password", ayuda: "Entre 8 y 72 caracteres." });
+        var error = el("p", { class: "f-error", role: "alert" });
+        var ok = el("p", { class: "f-ok", role: "status" });
+        var boton = el("button", { type: "submit", class: "btn" }, "Restablecer contraseña");
+        sec.appendChild(el("form", { novalidate: true, autocomplete: "off", onsubmit: function (e) {
+          e.preventDefault(); error.textContent = ""; ok.textContent = "";
+          if (!maestra.input.value) { error.textContent = "Escribe la contraseña maestra."; return; }
+          if (nueva.input.value.length < 8) { error.textContent = msg({ error: "clave_formato" }); return; }
+          boton.disabled = true;
+          api("admin_restablecer_clave", { p_id: k.id, p_maestra: maestra.input.value, p_nueva: nueva.input.value }).then(function (r) {
+            boton.disabled = false;
+            maestra.input.value = "";
+            if (!r.ok) { error.textContent = msg(r); return; }
+            nueva.input.value = "";
+            ok.textContent = "Contraseña restablecida. Se cerraron las sesiones de esa cuenta.";
+          });
+        } }, maestra.grupo, nueva.grupo, error, ok, boton));
+      }
+      cuerpo.appendChild(sec);
+    });
+  }
+
   /* ---------- Perfiles: todas las claves ---------- */
   function vistaPerfiles(c, g) {
     var claves = [];
@@ -701,11 +805,14 @@
     function accion(k) {
       var celda = el("td", { class: "nowrap" });
       var borrar = el("button", { type: "button", class: "btn secondary pequeno" }, "Borrar");
+      var info = el("button", { type: "button", class: "btn pequeno" }, "Más información");
+      info.addEventListener("click", function () { abrirDetalle(k, info, cargar); });
+      var botones = function () { vaciar(celda); celda.appendChild(info); celda.appendChild(document.createTextNode(" ")); celda.appendChild(borrar); };
       borrar.addEventListener("click", function () {
         vaciar(celda);
         var si = el("button", { type: "button", class: "btn danger pequeno" }, "Sí, borrar");
         var no = el("button", { type: "button", class: "btn secondary pequeno" }, "No");
-        no.addEventListener("click", function () { vaciar(celda); celda.appendChild(borrar); });
+        no.addEventListener("click", botones);
         si.addEventListener("click", function () {
           si.disabled = true;
           api("admin_borrar_clave", { p_id: k.id }).then(function (r) {
@@ -717,7 +824,7 @@
         celda.appendChild(el("span", { class: "confirmar" },
           k.estado === "usada" ? "¿Seguro? Se borra también la cuenta." : "¿Seguro?", si, no));
       });
-      celda.appendChild(borrar);
+      botones();
       return celda;
     }
 
