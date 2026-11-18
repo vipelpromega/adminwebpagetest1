@@ -32,3 +32,7 @@ Edita `js/config.js` (`sitioPublico`) para ver el estado de la web pública.
 ## Contraseña maestra (para restablecer contraseñas)
 Se fija **una sola vez** desde el SQL Editor de Supabase (ver el final de `supabase/schema.sql` del repo
 público). Se guarda con bcrypt; el panel solo puede comprobarla, nunca leerla. Tras 5 fallos se bloquea 5 minutos.
+
+## Tema
+
+Selector **Auto / Claro / Oscuro** arriba a la derecha (también en la pantalla de acceso). Auto sigue al sistema; la elección se guarda en este navegador (`tema-admin`).

@@ -386,3 +386,18 @@ main {
   header { padding: 1.5rem 1rem .25rem; }
   main { padding: 1rem 1rem 2rem; }
 }
+
+/* ---------- Selector de tema (Auto / Claro / Oscuro) ---------- */
+.selector-tema {
+  position: fixed; top: 12px; right: 12px; z-index: 1100; display: inline-flex; gap: 2px; padding: 2px;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 8px; box-shadow: var(--shadow-flyout);
+}
+.tema-op {
+  height: 28px; padding: 0 12px; border: 0; border-radius: var(--radius-sm); background: transparent;
+  color: var(--text); font: inherit; font-size: 13px; cursor: pointer; transition: background .15s, color .15s, transform .12s;
+}
+.tema-op:hover { background: var(--subtle-hover); }
+.tema-op:active { transform: scale(.94); }
+.tema-op.selected { background: var(--accent); color: var(--on-accent); }
+.tema-op:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+@media (max-width: 480px) { .selector-tema { top: 8px; right: 8px; } .tema-op { padding: 0 8px; } }
