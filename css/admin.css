@@ -218,3 +218,19 @@ table.tabla { width: 100%; border-collapse: collapse; }
 }
 .avatar-adm img { width: 100%; height: 100%; object-fit: cover; display: block; }
 @media (max-width: 480px) { .dato { grid-template-columns: 1fr; gap: 2px; } }
+
+/* Perfiles: columna de acciones compacta */
+.tabla td.acciones { width: 1%; white-space: nowrap; }
+.tabla td.acciones > .btn, .tabla td.acciones > .icono-btn { margin-left: 6px; vertical-align: middle; }
+.icono-btn {
+  display: inline-grid; place-items: center; width: 30px; height: 30px; padding: 0;
+  color: var(--accent); background: transparent; border: 1px solid transparent;
+  border-radius: var(--radius-sm); cursor: pointer; transition: background .1s, transform .12s var(--ease-out);
+}
+.icono-btn:hover { background: var(--subtle-hover); }
+.icono-btn:active { transform: scale(.92); }
+.icono-btn svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.confirmar { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; white-space: normal; }
+.confirmar-texto { color: var(--muted); font-size: 12px; }
+.confirmar-fila { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+.maestra-mini { width: 170px; height: 28px; padding: 0 8px; background: var(--field); border: 1px solid var(--field-border); border-bottom-color: var(--field-border-bottom); border-radius: var(--radius-sm); }

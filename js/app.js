@@ -711,6 +711,8 @@
         fila("Fecha de creación", fmtFecha(d.creado)),
         fila("Fecha de uso", d.usado_en ? fmtFecha(d.usado_en) : "Sin usar"),
         fila("Creado por", d.creado_por_email || "—"),
+        d.cuenta ? fila("Nombre de visualización", d.cuenta.nombre) : null,
+        d.cuenta ? fila("Nombre de usuario", "@" + d.cuenta.usuario) : null,
         fila("Foto de perfil", d.cuenta ? elemAvatar(d.cuenta) : "Sin cuenta todavía")));
       cuerpo.appendChild(errorClave);
 
@@ -764,65 +766,44 @@
       aviso,
       el("div", { class: "tabla-envoltorio" },
         el("table", { class: "tabla" },
-          el("thead", {}, el("tr", {}, ["Nombre de identificación", "Clave", "Estado", "Fecha de creación", "Fecha de uso", "Creado por", ""].map(function (t) { return el("th", {}, t); }))),
+          el("thead", {}, el("tr", {}, ["Nombre de identificación", "Estado", ""].map(function (t) { return el("th", {}, t); }))),
           cuerpo),
         vacio)));
 
-    function celdaClave(k) {
-      var texto = el("span", { class: "mono" }, k.vista || "—");
-      var ojo = el("button", { type: "button", class: "ojo", "aria-pressed": "false", "aria-label": "Mostrar la clave", "data-tooltip": "Mostrar la clave" });
-      ojo.innerHTML = ICONOS_OJO.abierto;
-      var timer = null;
-      function ocultar() {
-        clearTimeout(timer);
-        texto.textContent = k.vista || "—";
-        texto.classList.remove("revelada");
-        ojo.setAttribute("aria-pressed", "false");
-        ojo.setAttribute("aria-label", "Mostrar la clave");
-        ojo.setAttribute("data-tooltip", "Mostrar la clave");
-        ojo.innerHTML = ICONOS_OJO.abierto;
-      }
-      ojo.addEventListener("click", function () {
-        if (ojo.getAttribute("aria-pressed") === "true") { ocultar(); return; }
-        ojo.disabled = true;
-        api("admin_ver_clave", { p_id: k.id }).then(function (r) {
-          ojo.disabled = false;
-          if (g !== generacion) return;
-          if (!r.ok) { aviso.textContent = msg(r); return; }
-          texto.textContent = r.codigo;
-          texto.classList.add("revelada");
-          ojo.setAttribute("aria-pressed", "true");
-          ojo.setAttribute("aria-label", "Ocultar la clave");
-          ojo.setAttribute("data-tooltip", "Ocultar la clave");
-          ojo.innerHTML = ICONOS_OJO.tachado;
-          timer = setTimeout(ocultar, 20000); // se vuelve a ocultar sola
-        });
-      });
-      limpiezas.push(function () { clearTimeout(timer); });
-      return el("td", { class: "celda-clave" }, texto, ojo);
-    }
-
     function accion(k) {
-      var celda = el("td", { class: "nowrap" });
+      var celda = el("td", { class: "acciones" });
       var borrar = el("button", { type: "button", class: "btn secondary pequeno" }, "Borrar");
-      var info = el("button", { type: "button", class: "btn pequeno" }, "Más información");
+      var info = el("button", {
+        type: "button", class: "icono-btn", title: "Más información", "aria-label": "Más información de " + k.etiqueta
+      });
+      info.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 8h.01"/></svg>';
       info.addEventListener("click", function () { abrirDetalle(k, info, cargar); });
-      var botones = function () { vaciar(celda); celda.appendChild(info); celda.appendChild(document.createTextNode(" ")); celda.appendChild(borrar); };
+      var botones = function () { vaciar(celda); celda.appendChild(info); celda.appendChild(borrar); };
       borrar.addEventListener("click", function () {
         vaciar(celda);
-        var si = el("button", { type: "button", class: "btn danger pequeno" }, "Sí, borrar");
-        var no = el("button", { type: "button", class: "btn secondary pequeno" }, "No");
-        no.addEventListener("click", botones);
-        si.addEventListener("click", function () {
+        var maestra = el("input", {
+          class: "f-input maestra-mini", type: "password", maxlength: "128", autocomplete: "off", spellcheck: "false",
+          placeholder: "Contraseña maestra", "aria-label": "Contraseña maestra para borrar"
+        });
+        var si = el("button", { type: "submit", class: "btn danger pequeno" }, "Borrar");
+        var no = el("button", { type: "button", class: "btn secondary pequeno" }, "Cancelar");
+        no.addEventListener("click", function () { aviso.textContent = ""; botones(); });
+        var form = el("form", { class: "confirmar", novalidate: true, autocomplete: "off", onsubmit: function (e) {
+          e.preventDefault();
+          aviso.textContent = "";
+          if (!maestra.value) { aviso.textContent = "Escribe la contraseña maestra para borrar."; maestra.focus(); return; }
           si.disabled = true;
-          api("admin_borrar_clave", { p_id: k.id }).then(function (r) {
+          api("admin_borrar_clave", { p_id: k.id, p_maestra: maestra.value }).then(function (r) {
+            maestra.value = "";
             if (g !== generacion) return;
-            if (!r.ok) aviso.textContent = msg(r);
+            if (!r.ok) { aviso.textContent = msg(r); si.disabled = false; maestra.focus(); return; }
             cargar();
           });
-        });
-        celda.appendChild(el("span", { class: "confirmar" },
-          k.estado === "usada" ? "¿Seguro? Se borra también la cuenta." : "¿Seguro?", si, no));
+        } },
+          el("div", { class: "confirmar-texto" }, k.estado === "usada" ? "Se borra también la cuenta." : "Se borra la clave."),
+          el("div", { class: "confirmar-fila" }, maestra, si, no));
+        celda.appendChild(form);
+        maestra.focus();
       });
       botones();
       return celda;
@@ -839,11 +820,7 @@
       visibles.forEach(function (k) {
         cuerpo.appendChild(el("tr", {},
           el("td", {}, k.etiqueta),
-          celdaClave(k),
           el("td", {}, insignia(k.estado)),
-          el("td", { class: "nowrap" }, fmtFecha(k.creado)),
-          el("td", { class: "nowrap" }, k.estado === "usada" ? fmtFecha(k.usado_en) : "—"),
-          el("td", {}, k.creado_por_email || "—"),
           accion(k)));
       });
       cuenta.textContent = visibles.length + " de " + claves.length;
