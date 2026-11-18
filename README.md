@@ -36,3 +36,9 @@ público). Se guarda con bcrypt; el panel solo puede comprobarla, nunca leerla. 
 ## Tema
 
 Selector **Auto / Claro / Oscuro** arriba a la derecha (también en la pantalla de acceso). Auto sigue al sistema; la elección se guarda en este navegador (`tema-admin`).
+
+## Gráficas y suspensión
+
+- **Panel → Actividad**: ingresos e intentos fallidos (14 días), cuentas nuevas y claves creadas, y anillos de claves (usadas / sin usar) y cuentas (activas / suspendidas). Son SVG propios, sin librerías.
+- **Perfiles → Más información → Suspender cuenta**: cierra todas sus sesiones y le impide entrar; «Reactivar cuenta» la devuelve. Queda en Registros. Perfiles marca las suspendidas y tiene el filtro «Suspendidas».
+- Requiere volver a ejecutar `supabase/schema.sql`.

@@ -410,6 +410,91 @@
     })(t0);
   }
 
+  function insigniaSuspendida() { return el("span", { class: "badge suspendida" }, "Suspendida"); }
+
+  /* ---------- Gráficas (SVG, sin librerías) ---------- */
+  var NS_SVG = "http://www.w3.org/2000/svg";
+  function sv(tag, attrs, hijos) {
+    var n = document.createElementNS(NS_SVG, tag);
+    Object.keys(attrs || {}).forEach(function (k) { n.setAttribute(k, attrs[k]); });
+    (hijos || []).forEach(function (h) { n.appendChild(h); });
+    return n;
+  }
+  function nodoTexto(tag, attrs, texto) { var n = sv(tag, attrs); n.textContent = texto; return n; }
+  function techo(m) { // máximo "redondo" que se reparte en 4 tramos exactos
+    var paso = Math.max(1, m) / 4, pot = Math.pow(10, Math.floor(Math.log10(paso))), f = paso / pot;
+    return 4 * (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * pot;
+  }
+  function corto(dia) { var p = String(dia).split("-"); return p[2] + "/" + p[1]; }
+
+  // series: [{ clave, nombre, cls }]; tipo: "linea" | "barras"
+  function grafica(titulo, dias, series, tipo) {
+    var W = 640, H = 230, M = { i: 36, d: 12, a: 12, b: 28 };
+    var iw = W - M.i - M.d, ih = H - M.a - M.b;
+    var max = techo(Math.max.apply(null, dias.map(function (d) { return Math.max.apply(null, series.map(function (x) { return Number(d[x.clave]) || 0; })); })));
+    var X = function (i) { return M.i + (dias.length === 1 ? iw / 2 : (i * iw) / (dias.length - 1)); };
+    var XB = function (i) { return M.i + (i + .5) * (iw / dias.length); };
+    var Y = function (v) { return M.a + ih - (v / max) * ih; };
+    var total = series.map(function (x) { return x.nombre + ": " + dias.reduce(function (a, d) { return a + (Number(d[x.clave]) || 0); }, 0); }).join("; ");
+    var svg = sv("svg", { viewBox: "0 0 " + W + " " + H, class: "grafica-svg", role: "img", "aria-label": titulo + " (últimos 14 días). Totales — " + total });
+    for (var t = 0; t <= 4; t++) {
+      var v = (max / 4) * t;
+      svg.appendChild(sv("line", { x1: M.i, x2: W - M.d, y1: Y(v), y2: Y(v), class: "g-rejilla" }));
+      svg.appendChild(nodoTexto("text", { x: M.i - 6, y: Y(v) + 4, class: "g-eje", "text-anchor": "end" }, String(Math.round(v * 10) / 10)));
+    }
+    dias.forEach(function (d, i) {
+      if (i % 2 === 0 || i === dias.length - 1) {
+        svg.appendChild(nodoTexto("text", { x: tipo === "barras" ? XB(i) : X(i), y: H - 8, class: "g-eje", "text-anchor": "middle" }, corto(d.dia)));
+      }
+    });
+    if (tipo === "barras") {
+      var ancho = iw / dias.length, bw = Math.max(3, Math.min(18, (ancho * .7) / series.length));
+      dias.forEach(function (d, i) {
+        series.forEach(function (x, k) {
+          var val = Number(d[x.clave]) || 0, h = (val / max) * ih;
+          var bx = XB(i) - (bw * series.length) / 2 + k * bw;
+          var r = sv("rect", { x: bx, y: Y(val), width: Math.max(1, bw - 1), height: Math.max(val ? 2 : 0, h), rx: 2, class: "g-barra " + x.cls });
+          r.appendChild(nodoTexto("title", {}, corto(d.dia) + " · " + x.nombre + ": " + val));
+          svg.appendChild(r);
+        });
+      });
+    } else {
+      series.forEach(function (x) {
+        var pts = dias.map(function (d, i) { return X(i) + "," + Y(Number(d[x.clave]) || 0); });
+        svg.appendChild(sv("polygon", { points: X(0) + "," + Y(0) + " " + pts.join(" ") + " " + X(dias.length - 1) + "," + Y(0), class: "g-area " + x.cls }));
+        svg.appendChild(sv("polyline", { points: pts.join(" "), class: "g-linea " + x.cls }));
+        dias.forEach(function (d, i) {
+          var val = Number(d[x.clave]) || 0;
+          var c = sv("circle", { cx: X(i), cy: Y(val), r: 3.5, class: "g-punto " + x.cls });
+          c.appendChild(nodoTexto("title", {}, corto(d.dia) + " · " + x.nombre + ": " + val));
+          svg.appendChild(c);
+        });
+      });
+    }
+    var leyenda = el("div", { class: "g-leyenda" }, series.map(function (x) {
+      return el("span", { class: "g-item" }, el("i", { class: "g-muestra " + x.cls }), x.nombre);
+    }));
+    return el("section", { class: "graf-viz" }, el("h3", {}, titulo), leyenda, svg);
+  }
+
+  // Anillo con dos partes (a y b)
+  function anillo(titulo, a, b) {
+    var R = 42, C = 2 * Math.PI * R, tot = a.valor + b.valor;
+    var svg = sv("svg", { viewBox: "0 0 120 120", class: "anillo-svg", role: "img",
+      "aria-label": titulo + ": " + a.nombre + " " + a.valor + ", " + b.nombre + " " + b.valor });
+    svg.appendChild(sv("circle", { cx: 60, cy: 60, r: R, class: "an-fondo" }));
+    if (tot > 0) {
+      var la = (a.valor / tot) * C;
+      svg.appendChild(sv("circle", { cx: 60, cy: 60, r: R, class: "an-arco s1", "stroke-dasharray": la + " " + (C - la), transform: "rotate(-90 60 60)" }));
+      if (b.valor > 0) svg.appendChild(sv("circle", { cx: 60, cy: 60, r: R, class: "an-arco s2", "stroke-dasharray": (C - la) + " " + la, "stroke-dashoffset": -la, transform: "rotate(-90 60 60)" }));
+    }
+    svg.appendChild(nodoTexto("text", { x: 60, y: 66, class: "an-num", "text-anchor": "middle" }, String(tot)));
+    return el("section", { class: "graf-viz anillo" }, el("h3", {}, titulo), svg,
+      el("div", { class: "g-leyenda col" },
+        el("span", { class: "g-item" }, el("i", { class: "g-muestra s1" }), a.nombre + ": " + a.valor),
+        el("span", { class: "g-item" }, el("i", { class: "g-muestra s2" }), b.nombre + ": " + b.valor)));
+  }
+
   function insignia(estado) {
     var texto = { sin_usar: "Sin usar", usada: "Usado" }[estado] || estado;
     return el("span", { class: "badge " + estado }, texto);
@@ -418,11 +503,27 @@
   function vistaPanel(c, g) {
     var s = { sin: tarjetaStat("Claves sin usar"), usadas: tarjetaStat("Claves usadas"), cuentas: tarjetaStat("Cuentas registradas") };
     var lista = el("div", { class: "lista-simple" }, el("div", { class: "fila muted cargando" }, "Cargando…"));
+    var graficas = el("div", { class: "graficas" }, el("div", { class: "fila muted cargando" }, "Cargando gráficas…"));
     c.appendChild(el("div", { class: "vista" },
       el("div", { class: "stats" }, s.sin.nodo, s.usadas.nodo, s.cuentas.nodo),
       el("div", { class: "fila-botones" }, el("a", { class: "btn", href: "#/autenticacion" }, "Crear una clave")),
+      el("h2", { class: "grupo-titulo" }, "Actividad"),
+      graficas,
       el("h2", { class: "grupo-titulo" }, "Últimas claves"),
       lista));
+
+    api("admin_graficas").then(function (r) {
+      if (g !== generacion) return;
+      vaciar(graficas);
+      if (!r.ok) { graficas.appendChild(el("div", { class: "fila" }, msg(r))); return; }
+      graficas.appendChild(grafica("Ingresos e intentos fallidos", r.dias, [
+        { clave: "ingresos", nombre: "Ingresos", cls: "s1" }, { clave: "fallos", nombre: "Intentos fallidos", cls: "s2" }], "barras"));
+      graficas.appendChild(grafica("Cuentas nuevas y claves creadas", r.dias, [
+        { clave: "registros", nombre: "Cuentas nuevas", cls: "s1" }, { clave: "claves", nombre: "Claves creadas", cls: "s2" }], "linea"));
+      graficas.appendChild(el("div", { class: "anillos" },
+        anillo("Claves", { nombre: "Usadas", valor: Number(r.claves_usadas) }, { nombre: "Sin usar", valor: Number(r.claves_sin_usar) }),
+        anillo("Cuentas", { nombre: "Activas", valor: Number(r.cuentas_activas) }, { nombre: "Suspendidas", valor: Number(r.cuentas_suspendidas) })));
+    });
 
     Promise.all([api("admin_estado"), api("admin_listar_claves")]).then(function (rs) {
       if (g !== generacion) return;
@@ -441,7 +542,7 @@
         lista.appendChild(el("div", { class: "fila" },
           el("div", {}, el("div", {}, k.etiqueta),
             el("div", { class: "sub" }, "Creada " + fmtFecha(k.creado))),
-          insignia(k.estado)));
+          el("div", { class: "fila-insignias" }, k.suspendida ? insigniaSuspendida() : null, insignia(k.estado))));
       });
     });
   }
@@ -713,8 +814,31 @@
         fila("Creado por", d.creado_por_email || "—"),
         d.cuenta ? fila("Nombre de visualización", d.cuenta.nombre) : null,
         d.cuenta ? fila("Nombre de usuario", "@" + d.cuenta.usuario) : null,
+        d.cuenta ? fila("Estado de la cuenta", d.cuenta.suspendida ? "Suspendida desde " + fmtFecha(d.cuenta.suspendida_en) : "Activa") : null,
         fila("Foto de perfil", d.cuenta ? elemAvatar(d.cuenta) : "Sin cuenta todavía")));
       cuerpo.appendChild(errorClave);
+
+      // Suspender / reactivar la cuenta
+      if (d.cuenta) {
+        var susp = !!d.cuenta.suspendida;
+        var sMsg = el("p", { class: "f-error", role: "alert" });
+        var sBtn = el("button", { type: "button", class: susp ? "btn" : "btn danger" }, susp ? "Reactivar cuenta" : "Suspender cuenta");
+        sBtn.addEventListener("click", function () {
+          sBtn.disabled = true; sMsg.textContent = "";
+          api("admin_suspender_cuenta", { p_id: k.id, p_suspender: !susp }).then(function (r) {
+            if (!document.body.contains(fondo)) return;
+            if (!r.ok) { sBtn.disabled = false; sMsg.textContent = msg(r); return; }
+            if (alCambiar) alCambiar();
+            cerrar();
+            abrirDetalle(k, disparador, alCambiar);
+          });
+        });
+        cuerpo.appendChild(el("section", { class: "suspender" }, el("h3", {}, "Suspender cuenta"),
+          el("p", { class: "muted" }, susp
+            ? "La cuenta no puede iniciar sesión. Sus datos se conservan."
+            : "Cierra todas sus sesiones y le impide volver a entrar. Puedes reactivarla cuando quieras."),
+          sMsg, sBtn));
+      }
 
       // Restablecer contraseña (necesita la contraseña maestra)
       var sec = el("section", { class: "reset" }, el("h3", {}, "Restablecer contraseña"));
@@ -753,7 +877,7 @@
     buscar.input.setAttribute("aria-label", "Buscar");
     var filtro = el("select", { class: "f-select", "aria-label": "Filtrar por estado" },
       el("option", { value: "" }, "Todas"), el("option", { value: "sin_usar" }, "Sin usar"),
-      el("option", { value: "usada" }, "Usadas"));
+      el("option", { value: "usada" }, "Usadas"), el("option", { value: "suspendida" }, "Suspendidas"));
     var cuenta = el("span", { class: "muted" }, "");
     var actualizarBtn = el("button", { type: "button", class: "btn secondary pequeno" }, "Actualizar");
     var aviso = el("p", { class: "f-error", role: "alert" });
@@ -813,14 +937,14 @@
       var q = buscar.input.value.trim().toLowerCase();
       var est = filtro.value;
       var visibles = claves.filter(function (k) {
-        if (est && k.estado !== est) return false;
+        if (est === "suspendida" ? !k.suspendida : (est && k.estado !== est)) return false;
         return !q || String(k.etiqueta || "").toLowerCase().indexOf(q) !== -1;
       });
       vaciar(cuerpo);
       visibles.forEach(function (k) {
         cuerpo.appendChild(el("tr", {},
           el("td", {}, k.etiqueta),
-          el("td", {}, insignia(k.estado)),
+          el("td", {}, el("div", { class: "fila-insignias" }, insignia(k.estado), k.suspendida ? insigniaSuspendida() : null)),
           accion(k)));
       });
       cuenta.textContent = visibles.length + " de " + claves.length;
