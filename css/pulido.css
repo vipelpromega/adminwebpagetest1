@@ -1,4 +1,0 @@
-/* Tablas más ordenadas */
-.tabla th { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 600; }
-.tabla tbody tr:nth-child(even) { background: color-mix(in srgb, var(--text) 2.5%, transparent); }
-.tabla-envoltorio { border-radius: 12px; overflow: hidden; }
