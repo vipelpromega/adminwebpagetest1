@@ -278,3 +278,15 @@ table.tabla { width: 100%; border-collapse: collapse; }
 /* ---------- Cuenta suspendida ---------- */
 .badge.suspendida { color: var(--danger); border-color: var(--danger); }
 .fila-insignias { display: inline-flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+
+/* ---------- Países de acceso ---------- */
+.paises { display: flex; flex-direction: column; gap: 10px; }
+.pais-fila { display: flex; align-items: center; gap: 12px; }
+.pais-bandera { font-size: 22px; width: 30px; text-align: center; flex-shrink: 0; }
+.pais-datos { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.pais-nombre { font-size: 14px; display: flex; gap: 8px; align-items: baseline; }
+.pais-cod { font-size: 11px; color: var(--muted); }
+.pais-barra { display: block; height: 6px; border-radius: 3px; background: var(--border); overflow: hidden; }
+.pais-relleno { display: block; height: 100%; border-radius: 3px; background: var(--accent); transition: width .6s var(--ease-out, ease); }
+.pais-num { font-size: 12px; color: var(--muted); text-align: right; white-space: nowrap; }
+@media (max-width: 560px) { .pais-num { white-space: normal; max-width: 110px; } }

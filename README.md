@@ -42,3 +42,7 @@ Selector **Auto / Claro / Oscuro** arriba a la derecha (también en la pantalla 
 - **Panel → Actividad**: ingresos e intentos fallidos (14 días), cuentas nuevas y claves creadas, y anillos de claves (usadas / sin usar) y cuentas (activas / suspendidas). Son SVG propios, sin librerías.
 - **Perfiles → Más información → Suspender cuenta**: cierra todas sus sesiones y le impide entrar; «Reactivar cuenta» la devuelve. Ambas acciones piden la contraseña maestra. Queda en Registros. Perfiles marca las suspendidas y tiene el filtro «Suspendidas».
 - Requiere volver a ejecutar `supabase/schema.sql`.
+
+## Países de acceso
+
+En **Red** aparece la lista de países desde los que se accede (accesos y cuentas por país, con bandera). Sale del historial de ingresos; requiere volver a ejecutar `supabase/schema.sql`. El país depende de que el servidor reciba la cabecera `cf-ipcountry`; si no, se muestra «Desconocido».

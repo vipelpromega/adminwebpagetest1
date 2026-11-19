@@ -1088,6 +1088,37 @@
   /* ---------- Red ---------- */
   var TIPOS_RED = { cod: "Registro con clave", login: "Inicio de sesión", ip: "Todos los intentos desde esta IP" };
 
+  /* ---------- Países de acceso ---------- */
+  function bandera(cod) {
+    if (!/^[A-Z]{2}$/.test(cod) || cod === "XX" || cod === "T1") return "🌐";
+    return String.fromCodePoint(0x1f1e6 + cod.charCodeAt(0) - 65, 0x1f1e6 + cod.charCodeAt(1) - 65);
+  }
+  function nombrePais(cod) {
+    if (cod === "??" || cod === "XX") return "Desconocido";
+    if (cod === "T1") return "Red Tor";
+    try { return new Intl.DisplayNames(["es"], { type: "region" }).of(cod) || cod; } catch (e) { return cod; }
+  }
+  function pintarPaises(caja, r) {
+    vaciar(caja);
+    if (!r.ok) { caja.appendChild(el("div", { class: "vacio" }, msg(r))); return; }
+    if (!r.paises.length) { caja.appendChild(el("div", { class: "vacio" }, "Todavía no hay accesos registrados.")); return; }
+    var max = Math.max.apply(null, r.paises.map(function (x) { return Number(x.accesos); }));
+    var conocidos = r.paises.filter(function (x) { return x.pais !== "??"; }).length;
+    caja.appendChild(el("p", { class: "f-hint" }, conocidos + (conocidos === 1 ? " país" : " países") + " · " + r.total + (Number(r.total) === 1 ? " acceso" : " accesos") +
+      ". El país lo informa la red del servidor; los accesos anteriores a esta función aparecen como «Desconocido»."));
+    r.paises.forEach(function (x) {
+      var barra = el("span", { class: "pais-barra" }, el("i", { class: "pais-relleno" }));
+      barra.firstChild.style.width = Math.max(3, (Number(x.accesos) / max) * 100) + "%";
+      caja.appendChild(el("div", { class: "pais-fila" },
+        el("span", { class: "pais-bandera", "aria-hidden": "true" }, bandera(x.pais)),
+        el("div", { class: "pais-datos" },
+          el("div", { class: "pais-nombre" }, nombrePais(x.pais), el("span", { class: "pais-cod" }, x.pais === "??" ? "" : x.pais)),
+          barra),
+        el("div", { class: "pais-num" }, el("b", {}, String(x.accesos)), " " + (Number(x.accesos) === 1 ? "acceso" : "accesos") +
+          " · " + x.cuentas + (Number(x.cuentas) === 1 ? " cuenta" : " cuentas"))));
+    });
+  }
+
   function vistaRed(c, g) {
     var ipEl = el("div", { class: "stat-num mono-chico" }, "…");
     var blqEl = el("div", { class: "stat-num" }, "…");
@@ -1103,16 +1134,20 @@
     var aviso = el("p", { class: "f-error", role: "alert" });
     var cuerpo = el("tbody");
     var vacio = el("div", { class: "vacio cargando" }, "Cargando…");
+    var paisesCaja = el("section", { class: "card paises" }, el("div", { class: "vacio cargando" }, "Cargando…"));
 
     c.appendChild(el("div", { class: "vista" },
       el("div", { class: "stats" }, tarjeta(ipEl, "Tu IP (vista por el servidor)"), tarjeta(blqEl, "Bloqueos activos"), tarjeta(latEl, "Latencia al servidor")),
       el("section", { class: "card" }, el("h2", {}, "Latencia en vivo"), svg,
         el("p", { class: "f-hint" }, "Cada punto es una consulta al servidor desde este navegador.")),
+      el("h2", { class: "grupo-titulo" }, "Países de acceso"), paisesCaja,
       el("h2", { class: "grupo-titulo" }, "Intentos fallidos (últimos 7 días)"), aviso,
       el("div", { class: "tabla-envoltorio" },
         el("table", { class: "tabla" },
           el("thead", {}, el("tr", {}, ["Tipo", "Objetivo", "Fallos", "Estado", "Última vez", ""].map(function (t) { return el("th", {}, t); }))), cuerpo),
         vacio)));
+
+    api("admin_paises").then(function (r) { if (g === generacion) pintarPaises(paisesCaja, r); });
 
     var muestras = [], pausado = false, enCurso = false;
     function dibujar() {
