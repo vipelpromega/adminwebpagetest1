@@ -327,3 +327,4 @@ table.tabla { width: 100%; border-collapse: collapse; }
 .mundo-barra .seg:hover { color: var(--text); }
 .mundo-barra .seg.selected { background: var(--accent); color: #fff; }
 .mundo-barra .seg:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.mundo-svg { -webkit-user-select: none; user-select: none; -webkit-user-drag: none; }

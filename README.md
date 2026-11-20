@@ -13,7 +13,7 @@ Página aparte para **crear claves de registro** y ver el estado del sistema de 
 
 ## Secciones
 Panel · Estado (en vivo) · Autenticación (crear claves) · Perfiles (pestañas «Claves y cuentas» y «Registros de perfiles») ·
-Consola (comandos seguros) · Registros · Red (intentos fallidos, bloqueos, latencia).
+Consola (comandos seguros) · Registros (con selección y borrado) · Red (intentos fallidos, bloqueos, latencia).
 
 ## Formato de la clave
 `INICIALES-HUELLA-ALEATORIO`, p. ej. `5952-464C-0F66-` + 8 grupos de 4 hex
@@ -53,3 +53,6 @@ Mapa: d3-geo (ISC) y Natural Earth vía world-atlas (dominio público), empaquet
 
 Lista lo que hacen las cuentas (ingresos, registro, cambios de nombre, foto o contraseña, cierres de sesión, intentos fallidos) con **hora, país y dispositivo**. Tiene búsqueda, «Seleccionar» (casillas, «Seleccionar todo», «Borrar seleccionados») y «Borrar todos». Borrar pide la **contraseña maestra**.
 
+## Registros: borrar
+
+En **Registros**, «Seleccionar» muestra casillas (con «Seleccionar todo»); «Borrar seleccionados» y «Borrar todos» piden la **contraseña maestra**. El propio borrado queda anotado como «Borró registros».

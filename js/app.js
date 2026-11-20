@@ -1179,7 +1179,7 @@
   var ACCIONES = {
     acceso_admin: "Entró al panel", crear_clave: "Creó una clave", ver_clave: "Vio una clave",
     borrar_clave: "Borró una clave", cuenta_creada: "Se creó una cuenta", consola: "Comando de consola",
-    desbloquear: "Desbloqueó"
+    desbloquear: "Desbloqueó", borrar_registros: "Borró registros", borrar_registros_perfiles: "Borró registros de perfiles"
   };
   function detalleTexto(d) {
     if (!d || typeof d !== "object") return "";
@@ -1191,40 +1191,68 @@
     if (d.sesiones != null) partes.push(d.sesiones + " sesiones");
     if (d.bloqueos != null) partes.push(d.bloqueos + " bloqueos");
     if (d.tipo) partes.push(d.tipo + ": " + (d.objetivo || ""));
+    if (d.cantidad != null) partes.push(d.cantidad + (d.cantidad === 1 ? " registro" : " registros") + (d.todos ? " (todos)" : ""));
     return partes.join(" · ");
   }
 
   function vistaRegistros(c, g) {
-    var datos = [];
+    var datos = [], seleccionando = false, marcados = {};
     var filtro = el("select", { class: "f-select", "aria-label": "Filtrar por acción" }, el("option", { value: "" }, "Todas las acciones"),
       Object.keys(ACCIONES).map(function (k) { return el("option", { value: k }, ACCIONES[k]); }));
     var cuenta = el("span", { class: "muted" }, "");
     var refrescar = el("button", { type: "button", class: "btn secondary pequeno" }, "Actualizar");
+    var btnSel = el("button", { type: "button", class: "btn secondary pequeno" }, "Seleccionar");
+    var btnTodos = el("button", { type: "button", class: "btn secondary pequeno" }, "Seleccionar todo");
+    var btnBorrarSel = el("button", { type: "button", class: "btn danger pequeno" }, "Borrar seleccionados");
+    var btnBorrarTodos = el("button", { type: "button", class: "btn danger pequeno" }, "Borrar todos");
     var aviso = el("p", { class: "f-error", role: "alert" });
+    var panelBorrar = el("div", { class: "confirmar-panel" });
+    var cabecera = el("tr");
     var cuerpo = el("tbody");
     var vacio = el("div", { class: "vacio cargando" }, "Cargando…");
     c.appendChild(el("div", { class: "vista" },
-      el("div", { class: "barra-herramientas" }, filtro, refrescar, cuenta), aviso,
+      el("div", { class: "barra-herramientas" }, filtro, refrescar, btnSel, btnTodos, btnBorrarSel, btnBorrarTodos, cuenta), aviso, panelBorrar,
       el("div", { class: "tabla-envoltorio" },
-        el("table", { class: "tabla" },
-          el("thead", {}, el("tr", {}, ["Fecha", "Quién", "Acción", "Detalle"].map(function (t) { return el("th", {}, t); }))), cuerpo),
+        el("table", { class: "tabla tabla-registros" }, el("thead", {}, cabecera), cuerpo),
         vacio)));
 
+    function visibles() { var f = filtro.value; return datos.filter(function (x) { return !f || x.accion === f; }); }
+    function nMarcados() { return Object.keys(marcados).length; }
+
     function pintar() {
-      var f = filtro.value;
-      var v = datos.filter(function (x) { return !f || x.accion === f; });
+      var v = visibles();
+      vaciar(cabecera);
+      if (seleccionando) {
+        var todo = el("input", { type: "checkbox", "aria-label": "Marcar todos los visibles" });
+        todo.checked = v.length > 0 && v.every(function (x) { return marcados[x.id]; });
+        todo.addEventListener("change", function () { v.forEach(function (x) { if (todo.checked) marcados[x.id] = true; else delete marcados[x.id]; }); pintar(); });
+        cabecera.appendChild(el("th", { class: "col-chk" }, todo));
+      }
+      ["Fecha", "Quién", "Acción", "Detalle"].forEach(function (t) { cabecera.appendChild(el("th", {}, t)); });
       vaciar(cuerpo);
       v.forEach(function (x) {
-        cuerpo.appendChild(el("tr", {},
-          el("td", { class: "nowrap" }, fmtFecha(x.cuando)),
-          el("td", {}, x.actor_email || "Sistema / web pública"),
-          el("td", {}, ACCIONES[x.accion] || x.accion),
-          el("td", { class: "detalle-celda" }, detalleTexto(x.detalle))));
+        var tr = el("tr", { class: marcados[x.id] ? "marcada" : "" });
+        if (seleccionando) {
+          var chk = el("input", { type: "checkbox", "aria-label": "Marcar registro" });
+          chk.checked = !!marcados[x.id];
+          chk.addEventListener("change", function () { if (chk.checked) marcados[x.id] = true; else delete marcados[x.id]; pintar(); });
+          tr.appendChild(el("td", { class: "col-chk" }, chk));
+        }
+        tr.appendChild(el("td", { class: "nowrap" }, fmtFecha(x.cuando)));
+        tr.appendChild(el("td", {}, x.actor_email || "Sistema / web pública"));
+        tr.appendChild(el("td", {}, ACCIONES[x.accion] || x.accion));
+        tr.appendChild(el("td", { class: "detalle-celda" }, detalleTexto(x.detalle)));
+        cuerpo.appendChild(tr);
       });
-      cuenta.textContent = v.length + " de " + datos.length;
+      cuenta.textContent = v.length + " de " + datos.length + (seleccionando ? " · " + nMarcados() + " marcados" : "");
       vacio.hidden = v.length > 0;
       vacio.classList.remove("cargando");
       vacio.textContent = datos.length ? "Nada con ese filtro." : "Todavía no hay registros.";
+      btnSel.textContent = seleccionando ? "Cancelar selección" : "Seleccionar";
+      btnTodos.hidden = !seleccionando; btnBorrarSel.hidden = !seleccionando;
+      btnBorrarSel.textContent = "Borrar seleccionados (" + nMarcados() + ")";
+      btnBorrarSel.disabled = nMarcados() === 0;
+      btnBorrarTodos.disabled = datos.length === 0;
     }
     function cargar() {
       aviso.textContent = "";
@@ -1232,12 +1260,47 @@
         if (g !== generacion) return;
         if (!r.ok) { aviso.textContent = msg(r); vacio.hidden = false; vacio.textContent = "No se pudieron cargar los registros."; return; }
         datos = r.registros || [];
+        var vivos = {}; datos.forEach(function (x) { vivos[x.id] = true; });
+        Object.keys(marcados).forEach(function (k) { if (!vivos[k]) delete marcados[k]; });
         pintar();
       });
     }
+    function pedirBorrado(descripcion, args) {
+      vaciar(panelBorrar); aviso.textContent = "";
+      var maestra = el("input", {
+        class: "f-input maestra-mini", type: "password", maxlength: "128", autocomplete: "off", spellcheck: "false",
+        placeholder: "Contraseña maestra", "aria-label": "Contraseña maestra para borrar registros"
+      });
+      var si = el("button", { type: "submit", class: "btn danger pequeno" }, "Borrar");
+      var no = el("button", { type: "button", class: "btn secondary pequeno" }, "Cancelar");
+      no.addEventListener("click", function () { vaciar(panelBorrar); });
+      panelBorrar.appendChild(el("form", { class: "confirmar", novalidate: true, autocomplete: "off", onsubmit: function (e) {
+        e.preventDefault(); aviso.textContent = "";
+        if (!maestra.value) { aviso.textContent = "Escribe la contraseña maestra para borrar."; maestra.focus(); return; }
+        si.disabled = true;
+        args.p_maestra = maestra.value;
+        api("admin_borrar_registros", args).then(function (r) {
+          maestra.value = "";
+          if (g !== generacion) return;
+          if (!r.ok) { aviso.textContent = msg(r); si.disabled = false; maestra.focus(); return; }
+          vaciar(panelBorrar); seleccionando = false; marcados = {}; cargar();
+        });
+      } }, el("div", { class: "confirmar-texto" }, descripcion + " Esta acción no se puede deshacer."), el("div", { class: "confirmar-fila" }, maestra, si, no)));
+      maestra.focus();
+    }
     filtro.addEventListener("change", pintar);
     refrescar.addEventListener("click", cargar);
-    cargar();
+    btnSel.addEventListener("click", function () { seleccionando = !seleccionando; marcados = {}; vaciar(panelBorrar); pintar(); });
+    btnTodos.addEventListener("click", function () { visibles().forEach(function (x) { marcados[x.id] = true; }); pintar(); });
+    btnBorrarSel.addEventListener("click", function () {
+      var ids = Object.keys(marcados).map(Number);
+      if (!ids.length) return;
+      pedirBorrado("Se borrarán " + ids.length + (ids.length === 1 ? " registro seleccionado." : " registros seleccionados."), { p_ids: ids, p_todos: false });
+    });
+    btnBorrarTodos.addEventListener("click", function () {
+      pedirBorrado("Se borrarán todos los registros.", { p_ids: null, p_todos: true });
+    });
+    pintar(); cargar();
   }
 
   /* ---------- Red ---------- */
@@ -1267,7 +1330,7 @@
       if (f0) { var c0 = M.geoCentroid(f0); rot = [-c0[0], -c0[1] * .6]; }
     }
     var movimientoReducido = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    var arrastrando = false, auto = !movimientoReducido;
+    var arrastrando = false;
 
     var svg = sv("svg", { class: "mundo-svg", role: "img", "aria-label": "Mapa de países desde los que se accede" });
     var oceano = sv("path", { class: "m-oceano" }), rejilla = sv("path", { class: "m-rejilla" });
@@ -1300,6 +1363,7 @@
       M.paises.forEach(function (f, i) { trazos[i].setAttribute("d", ruta(f) || ""); });
     }
 
+    var pista = el("span", { class: "muted" }, "Arrastra el globo para girarlo");
     var botGlobo = el("button", { type: "button", class: "seg selected", "aria-pressed": "true" }, "Globo");
     var botMapa = el("button", { type: "button", class: "seg", "aria-pressed": "false" }, "Mapa");
     function poner(m) {
@@ -1307,41 +1371,71 @@
       botGlobo.classList.toggle("selected", m === "globo"); botGlobo.setAttribute("aria-pressed", String(m === "globo"));
       botMapa.classList.toggle("selected", m === "mapa"); botMapa.setAttribute("aria-pressed", String(m === "mapa"));
       svg.classList.toggle("plano", m === "mapa");
+      pista.hidden = m === "mapa";
       dibujar();
     }
     botGlobo.addEventListener("click", function () { poner("globo"); });
     botMapa.addEventListener("click", function () { poner("mapa"); });
 
-    // Arrastrar para girar el globo
-    var ult = null;
-    svg.addEventListener("pointerdown", function (e) { if (modo !== "globo") return; arrastrando = true; ult = [e.clientX, e.clientY]; svg.setPointerCapture(e.pointerId); svg.classList.add("arrastrando"); });
-    svg.addEventListener("pointermove", function (e) {
-      if (!arrastrando) return;
+    // Arrastrar para girar el globo (ratón, tacto y lápiz). Los eventos de movimiento y de soltar se
+    // escuchan en la ventana mientras dura el gesto, así nunca se queda «agarrado» ni bloqueado.
+    var ult = null, idPuntero = null, ultimoToque = 0, redibuja = false;
+    function programar() {
+      if (redibuja) return;
+      redibuja = true;
+      requestAnimationFrame(function () { redibuja = false; dibujar(); });
+    }
+    function mover(e) {
+      if (!arrastrando || (idPuntero !== null && e.pointerId !== idPuntero)) return;
+      if (e.buttons === 0 && e.pointerType === "mouse") { soltar(); return; } // se soltó fuera de la ventana
       var k = 0.35;
       rot = [rot[0] + (e.clientX - ult[0]) * k, Math.max(-85, Math.min(85, rot[1] - (e.clientY - ult[1]) * k))];
-      ult = [e.clientX, e.clientY]; dibujar();
+      ult = [e.clientX, e.clientY];
+      ultimoToque = Date.now();
+      programar();
+    }
+    function soltar() {
+      arrastrando = false; idPuntero = null; ultimoToque = Date.now();
+      svg.classList.remove("arrastrando");
+      window.removeEventListener("pointermove", mover);
+      window.removeEventListener("pointerup", fin);
+      window.removeEventListener("pointercancel", fin);
+      window.removeEventListener("blur", soltar);
+    }
+    function fin(e) { if (idPuntero === null || e.pointerId === idPuntero) soltar(); }
+    svg.addEventListener("pointerdown", function (e) {
+      if (modo !== "globo" || (e.pointerType === "mouse" && e.button !== 0)) return;
+      if (arrastrando) soltar(); // por si quedó un gesto anterior sin cerrar
+      arrastrando = true; idPuntero = e.pointerId; ult = [e.clientX, e.clientY]; ultimoToque = Date.now();
+      svg.classList.add("arrastrando");
+      window.addEventListener("pointermove", mover);
+      window.addEventListener("pointerup", fin);
+      window.addEventListener("pointercancel", fin);
+      window.addEventListener("blur", soltar);
+      e.preventDefault();
     });
-    function soltar() { arrastrando = false; svg.classList.remove("arrastrando"); }
-    svg.addEventListener("pointerup", soltar); svg.addEventListener("pointercancel", soltar);
+    svg.addEventListener("dragstart", function (e) { e.preventDefault(); });
+    limpiezas.push(soltar);
 
-    // Giro lento automático (se detiene al tocar el globo o al salir de la vista)
+    // Giro lento automático: se pausa mientras se arrastra y se reanuda 2,5 s después de soltar
     var raf = null, antes = 0;
     function paso(t) {
       if (g !== generacion || !document.body.contains(svg)) return;
-      if (auto && !arrastrando && modo === "globo" && !document.hidden) {
-        if (antes) rot = [rot[0] + (t - antes) * 0.006, rot[1]];
+      var dt = antes ? Math.min(t - antes, 64) : 0;
+      antes = t;
+      if (!movimientoReducido && modo === "globo" && !arrastrando && !document.hidden && Date.now() - ultimoToque > 2500) {
+        rot = [rot[0] + dt * 0.006, rot[1]];
         dibujar();
       }
-      antes = t; raf = requestAnimationFrame(paso);
+      raf = requestAnimationFrame(paso);
     }
-    svg.addEventListener("pointerdown", function () { auto = false; });
     if (!movimientoReducido) raf = requestAnimationFrame(paso);
     limpiezas.push(function () { if (raf) cancelAnimationFrame(raf); });
 
     dibujar();
     return el("div", { class: "mundo" },
       el("div", { class: "mundo-barra" }, el("div", { class: "segmented", role: "group", "aria-label": "Vista del mapa" }, botGlobo, botMapa),
-        el("span", { class: "muted" }, "Arrastra el globo para girarlo")),
+        pista),
       svg);
   }
 
