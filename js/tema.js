@@ -5,13 +5,14 @@
   var mq = window.matchMedia ? window.matchMedia("(prefers-color-scheme: light)") : null;
 
   function modo() {
-    try { var v = localStorage.getItem(KEY); if (v === "claro" || v === "oscuro") return v; } catch (e) { /* nada */ }
+    try { var v = localStorage.getItem(KEY); if (v === "claro" || v === "oscuro" || v === "oled") return v; } catch (e) { /* nada */ }
     return "auto";
   }
   function aplicar() {
     var m = modo();
     var claro = m === "claro" || (m === "auto" && mq && mq.matches);
     root.setAttribute("data-theme", claro ? "light" : "dark");
+    if (m === "oled") root.setAttribute("data-oled", ""); else root.removeAttribute("data-oled");
     root.setAttribute("data-modo", m);
   }
   function poner(m) {
@@ -22,7 +23,7 @@
   if (mq && mq.addEventListener) mq.addEventListener("change", aplicar);
   aplicar();
 
-  var OPCIONES = [["auto", "Auto"], ["claro", "Claro"], ["oscuro", "Oscuro"]];
+  var OPCIONES = [["auto", "Auto"], ["claro", "Claro"], ["oscuro", "Oscuro"], ["oled", "OLED"]];
   var botones = [];
   function pintar() {
     botones.forEach(function (b) {

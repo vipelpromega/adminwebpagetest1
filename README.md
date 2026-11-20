@@ -12,7 +12,7 @@ Página aparte para **crear claves de registro** y ver el estado del sistema de 
 - Las claves nunca se guardan en claro (AES-256 + HMAC). Al borrar una clave usada se borra también la cuenta.
 
 ## Secciones
-Panel · Estado (en vivo) · Autenticación (crear claves) · Perfiles (todas las claves; botón Más información y Borrar) ·
+Panel · Estado (en vivo) · Autenticación (crear claves) · Perfiles (pestañas «Claves y cuentas» y «Registros de perfiles») ·
 Consola (comandos seguros) · Registros · Red (intentos fallidos, bloqueos, latencia).
 
 ## Formato de la clave
@@ -35,7 +35,7 @@ público). Se guarda con bcrypt; el panel solo puede comprobarla, nunca leerla. 
 
 ## Tema
 
-Selector **Auto / Claro / Oscuro** arriba a la derecha (también en la pantalla de acceso). Auto sigue al sistema; la elección se guarda en este navegador (`tema-admin`).
+Selector **Auto / Claro / Oscuro / OLED** (OLED = negro puro) arriba a la derecha (también en la pantalla de acceso). Auto sigue al sistema; la elección se guarda en este navegador (`tema-admin`).
 
 ## Gráficas y suspensión
 
@@ -43,6 +43,13 @@ Selector **Auto / Claro / Oscuro** arriba a la derecha (también en la pantalla 
 - **Perfiles → Más información → Suspender cuenta**: cierra todas sus sesiones y le impide entrar; «Reactivar cuenta» la devuelve. Ambas acciones piden la contraseña maestra. Queda en Registros. Perfiles marca las suspendidas y tiene el filtro «Suspendidas».
 - Requiere volver a ejecutar `supabase/schema.sql`.
 
-## Países de acceso
+## Países de acceso (globo y mapa)
 
-En **Red** aparece la lista de países desde los que se accede (accesos y cuentas por país, con bandera). Sale del historial de ingresos; requiere volver a ejecutar `supabase/schema.sql`. El país depende de que el servidor reciba la cabecera `cf-ipcountry`; si no, se muestra «Desconocido».
+En **Red**, los países desde los que se accede se dibujan en un **globo** (se arrastra para girarlo; gira solo salvo con «reducir movimiento») o en un **mapa plano**, coloreando cada país según sus accesos, con la lista debajo. En **Perfiles → Más información** se ven el país de registro y los países de acceso de la cuenta. El país depende de que el servidor reciba la cabecera `cf-ipcountry`; si no, aparece «Desconocido» (y los registros anteriores a esta función también). Requiere volver a ejecutar `supabase/schema.sql`.
+
+Mapa: d3-geo (ISC) y Natural Earth vía world-atlas (dominio público), empaquetados en `js/vendor/mundo.js`.
+
+## Perfiles → Registros de perfiles
+
+Lista lo que hacen las cuentas (ingresos, registro, cambios de nombre, foto o contraseña, cierres de sesión, intentos fallidos) con **hora, país y dispositivo**. Tiene búsqueda, «Seleccionar» (casillas, «Seleccionar todo», «Borrar seleccionados») y «Borrar todos». Borrar pide la **contraseña maestra**.
+

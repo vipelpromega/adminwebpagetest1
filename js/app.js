@@ -56,6 +56,7 @@
       case "maestra_no_definida": return "Todavía no fijaste la contraseña maestra. Hazlo una vez en Supabase (SQL Editor); las instrucciones están al final de schema.sql.";
       case "maestra_incorrecta": return "La contraseña maestra no es correcta.";
       case "clave_formato": return "La contraseña nueva debe tener entre 8 y 72 caracteres.";
+      case "nada_que_borrar": return "No hay registros seleccionados.";
       case "sin_cuenta": return "Esta clave todavía no tiene cuenta.";
       case "espera": return "Demasiados intentos. Espera " + (r.segundos || 60) + " s.";
       case "permiso": return "El servidor rechazó la petición.";
@@ -317,7 +318,7 @@
     { id: "estado", nombre: "Estado", sub: "Estado de la web y de la base de datos, en vivo", render: vistaEstado },
     { id: "consola", nombre: "Consola", sub: "Comandos seguros (no hay SQL libre)", render: vistaConsola },
     { id: "autenticacion", nombre: "Autenticación", sub: "Crear claves de registro", render: vistaAutenticacion },
-    { id: "perfiles", nombre: "Perfiles", sub: "Todas las claves y su estado", render: vistaPerfiles },
+    { id: "perfiles", nombre: "Perfiles", sub: "Claves, cuentas y lo que hacen", render: vistaPerfiles },
     { id: "registros", nombre: "Registros", sub: "Historial de acciones", render: vistaRegistros },
     { id: "red", nombre: "Red", sub: "Intentos fallidos, bloqueos y latencia", render: vistaRed }
   ];
@@ -814,6 +815,8 @@
         fila("Creado por", d.creado_por_email || "—"),
         d.cuenta ? fila("Nombre de visualización", d.cuenta.nombre) : null,
         d.cuenta ? fila("Nombre de usuario", "@" + d.cuenta.usuario) : null,
+        d.cuenta ? fila("País de registro", d.cuenta.pais_registro ? bandera(d.cuenta.pais_registro) + " " + nombrePais(d.cuenta.pais_registro) : "Desconocido") : null,
+        d.cuenta && d.cuenta.paises && d.cuenta.paises.length ? fila("Países de acceso", d.cuenta.paises.map(function (c) { return (c === "??" ? "" : bandera(c) + " ") + nombrePais(c); }).join(", ")) : null,
         d.cuenta ? fila("Estado de la cuenta", d.cuenta.suspendida ? "Suspendida desde " + fmtFecha(d.cuenta.suspendida_en) : "Activa") : null,
         fila("Foto de perfil", d.cuenta ? elemAvatar(d.cuenta) : "Sin cuenta todavía")));
       cuerpo.appendChild(errorClave);
@@ -878,6 +881,158 @@
 
   /* ---------- Perfiles: todas las claves ---------- */
   function vistaPerfiles(c, g) {
+    var enRegistros = /^#\/perfiles\/registros/.test(location.hash);
+    var pestana = function (href, texto, activa) {
+      var a = el("a", { class: "subtab" + (activa ? " activa" : ""), href: href }, texto);
+      if (activa) a.setAttribute("aria-current", "page");
+      return a;
+    };
+    var interior = el("div", {});
+    c.appendChild(el("div", { class: "subtabs", role: "navigation", "aria-label": "Secciones de Perfiles" },
+      pestana("#/perfiles", "Claves y cuentas", !enRegistros), pestana("#/perfiles/registros", "Registros de perfiles", enRegistros)));
+    c.appendChild(interior);
+    if (enRegistros) vistaRegistrosPerfiles(interior, g); else vistaClaves(interior, g);
+  }
+
+  /* ---------- Perfiles → Registros de perfiles ---------- */
+  var ACCIONES_PERFIL = {
+    ingreso: "Inició sesión", registro: "Creó su cuenta", fallo: "Intento fallido de inicio de sesión", suspendida: "Intentó entrar con la cuenta suspendida",
+    cambio_nombre: "Cambió su nombre", cambio_foto: "Cambió su foto de perfil", cambio_clave: "Cambió su contraseña",
+    clave_restablecida: "Contraseña restablecida por un administrador", cierre_sesion: "Cerró sesión", cierre_otras: "Cerró sus otras sesiones"
+  };
+  function dispositivoCorto(ua) {
+    ua = String(ua || "");
+    var nav = /Edg\//.test(ua) ? "Edge" : /OPR\/|Opera/.test(ua) ? "Opera" : /Firefox\//.test(ua) ? "Firefox" : /Chrome\/|CriOS/.test(ua) ? "Chrome" : /Safari\//.test(ua) ? "Safari" : "";
+    var so = /Windows/.test(ua) ? "Windows" : /Android/.test(ua) ? "Android" : /iPhone|iPad|iPod/.test(ua) ? "iOS" : /Mac OS X|Macintosh/.test(ua) ? "macOS" : /Linux/.test(ua) ? "Linux" : "";
+    return nav && so ? nav + " en " + so : (nav || so || "—");
+  }
+
+  function vistaRegistrosPerfiles(c, g) {
+    var filas = [], hayMas = false, total = 0;
+    var seleccionando = false, marcados = {};
+    var buscar = campoTexto({ id: "buscar-reg", max: 60 });
+    buscar.input.setAttribute("placeholder", "Buscar por perfil, acción o país"); buscar.input.setAttribute("aria-label", "Buscar");
+    var cuenta = el("span", { class: "muted" }, "");
+    var btnAct = el("button", { type: "button", class: "btn secondary pequeno" }, "Actualizar");
+    var btnSel = el("button", { type: "button", class: "btn secondary pequeno" }, "Seleccionar");
+    var btnTodos = el("button", { type: "button", class: "btn secondary pequeno" }, "Seleccionar todo");
+    var btnBorrarSel = el("button", { type: "button", class: "btn danger pequeno" }, "Borrar seleccionados");
+    var btnBorrarTodos = el("button", { type: "button", class: "btn danger pequeno" }, "Borrar todos");
+    var aviso = el("p", { class: "f-error", role: "alert" });
+    var panelBorrar = el("div", { class: "confirmar-panel" });
+    var cuerpo = el("tbody"), vacio = el("div", { class: "vacio" }, "Cargando…");
+    var masBtn = el("button", { type: "button", class: "btn secondary pequeno" }, "Cargar más");
+    var cabecera = el("tr");
+    var thEl = el("div", { class: "tabla-envoltorio" }, el("table", { class: "tabla tabla-registros" }, el("thead", {}, cabecera), cuerpo), vacio);
+
+    c.appendChild(el("div", { class: "vista" },
+      el("p", { class: "muted" }, "Lo que hacen las cuentas: ingresos, cambios y cierres de sesión, con su país y hora."),
+      el("div", { class: "barra-herramientas" }, el("div", { class: "f-box" }, buscar.input), btnAct, btnSel, btnTodos, btnBorrarSel, btnBorrarTodos, cuenta),
+      aviso, panelBorrar, thEl, el("div", { class: "mas-fila" }, masBtn)));
+
+    function visibles() {
+      var q = buscar.input.value.trim().toLowerCase();
+      if (!q) return filas;
+      return filas.filter(function (x) {
+        return (x.usuario + " " + x.nombre + " " + (ACCIONES_PERFIL[x.evento] || x.evento) + " " + (x.pais ? nombrePais(x.pais) + " " + x.pais : "desconocido")).toLowerCase().indexOf(q) >= 0;
+      });
+    }
+    function nMarcados() { return Object.keys(marcados).length; }
+
+    function pintar() {
+      var v = visibles();
+      vaciar(cabecera);
+      if (seleccionando) {
+        var todo = el("input", { type: "checkbox", "aria-label": "Marcar todos los visibles" });
+        todo.checked = v.length > 0 && v.every(function (x) { return marcados[x.id]; });
+        todo.addEventListener("change", function () { v.forEach(function (x) { if (todo.checked) marcados[x.id] = true; else delete marcados[x.id]; }); pintar(); });
+        cabecera.appendChild(el("th", { class: "col-chk" }, todo));
+      }
+      ["Hora", "Perfil", "Acción", "País", "Dispositivo"].forEach(function (t) { cabecera.appendChild(el("th", {}, t)); });
+      vaciar(cuerpo);
+      v.forEach(function (x) {
+        var tr = el("tr", { class: marcados[x.id] ? "marcada" : "" });
+        if (seleccionando) {
+          var chk = el("input", { type: "checkbox", "aria-label": "Marcar registro" });
+          chk.checked = !!marcados[x.id];
+          chk.addEventListener("change", function () { if (chk.checked) marcados[x.id] = true; else delete marcados[x.id]; pintar(); });
+          tr.appendChild(el("td", { class: "col-chk" }, chk));
+        }
+        var pais = x.pais ? bandera(x.pais) + " " + nombrePais(x.pais) : "Desconocido";
+        tr.appendChild(el("td", { class: "nowrap" }, fmtFecha(x.fecha)));
+        tr.appendChild(el("td", {}, x.nombre, el("div", { class: "muted pequeno-t" }, "@" + x.usuario)));
+        tr.appendChild(el("td", {}, ACCIONES_PERFIL[x.evento] || x.evento));
+        tr.appendChild(el("td", { class: "nowrap" }, pais));
+        tr.appendChild(el("td", {}, dispositivoCorto(x.dispositivo), el("div", { class: "muted pequeno-t" }, x.ip && x.ip !== "desconocida" ? x.ip : "")));
+        cuerpo.appendChild(tr);
+      });
+      vacio.textContent = filas.length ? "Ningún registro coincide con la búsqueda." : "Todavía no hay registros de perfiles.";
+      vacio.hidden = v.length > 0;
+      cuenta.textContent = total + (total === 1 ? " registro" : " registros") + (seleccionando ? " · " + nMarcados() + " marcados" : "");
+      btnSel.textContent = seleccionando ? "Cancelar selección" : "Seleccionar";
+      btnTodos.hidden = !seleccionando; btnBorrarSel.hidden = !seleccionando;
+      btnBorrarSel.textContent = "Borrar seleccionados (" + nMarcados() + ")";
+      btnBorrarSel.disabled = nMarcados() === 0;
+      btnBorrarTodos.disabled = total === 0;
+      masBtn.hidden = !hayMas;
+    }
+
+    function cargar(mas) {
+      aviso.textContent = "";
+      var antes = mas && filas.length ? filas[filas.length - 1].id : null;
+      var args = { p_limite: 200 }; if (antes) args.p_antes = antes;
+      api("admin_registros_perfiles", args).then(function (r) {
+        if (g !== generacion) return;
+        if (!r.ok) { aviso.textContent = msg(r); vacio.textContent = "No se pudo cargar."; return; }
+        var lote = r.registros.slice(0, 200);
+        hayMas = r.registros.length > 200; total = Number(r.total);
+        filas = mas ? filas.concat(lote) : lote;
+        if (!mas) marcados = {};
+        pintar();
+      });
+    }
+
+    function pedirBorrado(descripcion, args) {
+      vaciar(panelBorrar); aviso.textContent = "";
+      var maestra = el("input", {
+        class: "f-input maestra-mini", type: "password", maxlength: "128", autocomplete: "off", spellcheck: "false",
+        placeholder: "Contraseña maestra", "aria-label": "Contraseña maestra para borrar registros"
+      });
+      var si = el("button", { type: "submit", class: "btn danger pequeno" }, "Borrar");
+      var no = el("button", { type: "button", class: "btn secondary pequeno" }, "Cancelar");
+      no.addEventListener("click", function () { vaciar(panelBorrar); });
+      panelBorrar.appendChild(el("form", { class: "confirmar", novalidate: true, autocomplete: "off", onsubmit: function (e) {
+        e.preventDefault(); aviso.textContent = "";
+        if (!maestra.value) { aviso.textContent = "Escribe la contraseña maestra para borrar."; maestra.focus(); return; }
+        si.disabled = true;
+        args.p_maestra = maestra.value;
+        api("admin_borrar_registros_perfiles", args).then(function (r) {
+          maestra.value = "";
+          if (g !== generacion) return;
+          if (!r.ok) { aviso.textContent = msg(r); si.disabled = false; maestra.focus(); return; }
+          vaciar(panelBorrar); seleccionando = false; cargar(false);
+        });
+      } }, el("div", { class: "confirmar-texto" }, descripcion + " Esta acción no se puede deshacer."), el("div", { class: "confirmar-fila" }, maestra, si, no)));
+      maestra.focus();
+    }
+
+    btnAct.addEventListener("click", function () { cargar(false); });
+    masBtn.addEventListener("click", function () { cargar(true); });
+    buscar.input.addEventListener("input", pintar);
+    btnSel.addEventListener("click", function () { seleccionando = !seleccionando; marcados = {}; vaciar(panelBorrar); pintar(); });
+    btnTodos.addEventListener("click", function () { visibles().forEach(function (x) { marcados[x.id] = true; }); pintar(); });
+    btnBorrarSel.addEventListener("click", function () {
+      var ids = Object.keys(marcados).map(Number);
+      if (!ids.length) return;
+      pedirBorrado("Se borrarán " + ids.length + (ids.length === 1 ? " registro seleccionado." : " registros seleccionados."), { p_ids: ids, p_todos: false });
+    });
+    btnBorrarTodos.addEventListener("click", function () {
+      pedirBorrado("Se borrarán todos los registros de perfiles (" + total + ").", { p_ids: null, p_todos: true });
+    });
+    pintar(); cargar(false);
+  }
+
+  function vistaClaves(c, g) {
     var claves = [];
     var buscar = campoTexto({ id: "buscar", max: 80 });
     buscar.input.setAttribute("placeholder", "Buscar por nombre de identificación");
@@ -1098,7 +1253,99 @@
     if (cod === "T1") return "Red Tor";
     try { return new Intl.DisplayNames(["es"], { type: "region" }).of(cod) || cod; } catch (e) { return cod; }
   }
-  function pintarPaises(caja, r) {
+  // Globo (arrastrable) o mapa plano con los países coloreados según sus accesos
+  function mapaMundial(caja, datos, g) {
+    var M = window.Mundo;
+    if (!M || !M.paises) return null;
+    var porPais = {}, max = 1;
+    datos.forEach(function (x) { porPais[x.pais] = x; max = Math.max(max, Number(x.accesos)); });
+    var modo = "globo";
+    var rot = [-30, -15];
+    var top = datos.filter(function (x) { return porPais[x.pais] && x.pais !== "??"; })[0];
+    if (top) {
+      var f0 = M.paises.filter(function (f) { return f.a2 === top.pais; })[0];
+      if (f0) { var c0 = M.geoCentroid(f0); rot = [-c0[0], -c0[1] * .6]; }
+    }
+    var movimientoReducido = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    var arrastrando = false, auto = !movimientoReducido;
+
+    var svg = sv("svg", { class: "mundo-svg", role: "img", "aria-label": "Mapa de países desde los que se accede" });
+    var oceano = sv("path", { class: "m-oceano" }), rejilla = sv("path", { class: "m-rejilla" });
+    svg.appendChild(oceano); svg.appendChild(rejilla);
+    var trazos = M.paises.map(function (f) {
+      var d = f.a2 ? porPais[f.a2] : null, p = sv("path", { class: "m-pais" + (d ? " con" : "") });
+      if (d) {
+        p.setAttribute("fill-opacity", String(.4 + .6 * (Number(d.accesos) / max)));
+        p.appendChild(nodoTexto("title", {}, nombrePais(f.a2) + ": " + d.accesos + (Number(d.accesos) === 1 ? " acceso" : " accesos") + " · " + d.cuentas + (Number(d.cuentas) === 1 ? " cuenta" : " cuentas")));
+      } else {
+        p.appendChild(nodoTexto("title", {}, f.a2 ? nombrePais(f.a2) : (f.nombre || "")));
+      }
+      svg.appendChild(p);
+      return p;
+    });
+
+    function dibujar() {
+      var W, H, proy;
+      if (modo === "globo") {
+        W = 520; H = 520;
+        proy = M.geoOrthographic().scale(240).translate([W / 2, H / 2]).rotate(rot).clipAngle(90);
+      } else {
+        W = 900; H = 460;
+        proy = M.geoNaturalEarth1().fitExtent([[6, 6], [W - 6, H - 6]], { type: "Sphere" });
+      }
+      svg.setAttribute("viewBox", "0 0 " + W + " " + H);
+      var ruta = M.geoPath(proy);
+      oceano.setAttribute("d", ruta({ type: "Sphere" }) || "");
+      rejilla.setAttribute("d", ruta(M.geoGraticule10()) || "");
+      M.paises.forEach(function (f, i) { trazos[i].setAttribute("d", ruta(f) || ""); });
+    }
+
+    var botGlobo = el("button", { type: "button", class: "seg selected", "aria-pressed": "true" }, "Globo");
+    var botMapa = el("button", { type: "button", class: "seg", "aria-pressed": "false" }, "Mapa");
+    function poner(m) {
+      modo = m;
+      botGlobo.classList.toggle("selected", m === "globo"); botGlobo.setAttribute("aria-pressed", String(m === "globo"));
+      botMapa.classList.toggle("selected", m === "mapa"); botMapa.setAttribute("aria-pressed", String(m === "mapa"));
+      svg.classList.toggle("plano", m === "mapa");
+      dibujar();
+    }
+    botGlobo.addEventListener("click", function () { poner("globo"); });
+    botMapa.addEventListener("click", function () { poner("mapa"); });
+
+    // Arrastrar para girar el globo
+    var ult = null;
+    svg.addEventListener("pointerdown", function (e) { if (modo !== "globo") return; arrastrando = true; ult = [e.clientX, e.clientY]; svg.setPointerCapture(e.pointerId); svg.classList.add("arrastrando"); });
+    svg.addEventListener("pointermove", function (e) {
+      if (!arrastrando) return;
+      var k = 0.35;
+      rot = [rot[0] + (e.clientX - ult[0]) * k, Math.max(-85, Math.min(85, rot[1] - (e.clientY - ult[1]) * k))];
+      ult = [e.clientX, e.clientY]; dibujar();
+    });
+    function soltar() { arrastrando = false; svg.classList.remove("arrastrando"); }
+    svg.addEventListener("pointerup", soltar); svg.addEventListener("pointercancel", soltar);
+
+    // Giro lento automático (se detiene al tocar el globo o al salir de la vista)
+    var raf = null, antes = 0;
+    function paso(t) {
+      if (g !== generacion || !document.body.contains(svg)) return;
+      if (auto && !arrastrando && modo === "globo" && !document.hidden) {
+        if (antes) rot = [rot[0] + (t - antes) * 0.006, rot[1]];
+        dibujar();
+      }
+      antes = t; raf = requestAnimationFrame(paso);
+    }
+    svg.addEventListener("pointerdown", function () { auto = false; });
+    if (!movimientoReducido) raf = requestAnimationFrame(paso);
+    limpiezas.push(function () { if (raf) cancelAnimationFrame(raf); });
+
+    dibujar();
+    return el("div", { class: "mundo" },
+      el("div", { class: "mundo-barra" }, el("div", { class: "segmented", role: "group", "aria-label": "Vista del mapa" }, botGlobo, botMapa),
+        el("span", { class: "muted" }, "Arrastra el globo para girarlo")),
+      svg);
+  }
+
+  function pintarPaises(caja, r, g) {
     vaciar(caja);
     if (!r.ok) { caja.appendChild(el("div", { class: "vacio" }, msg(r))); return; }
     if (!r.paises.length) { caja.appendChild(el("div", { class: "vacio" }, "Todavía no hay accesos registrados.")); return; }
@@ -1106,10 +1353,13 @@
     var conocidos = r.paises.filter(function (x) { return x.pais !== "??"; }).length;
     caja.appendChild(el("p", { class: "f-hint" }, conocidos + (conocidos === 1 ? " país" : " países") + " · " + r.total + (Number(r.total) === 1 ? " acceso" : " accesos") +
       ". El país lo informa la red del servidor; los accesos anteriores a esta función aparecen como «Desconocido»."));
+    var mapa = mapaMundial(caja, r.paises, g);
+    if (mapa) caja.appendChild(mapa);
+    var lista = el("div", { class: "paises-lista" });
     r.paises.forEach(function (x) {
       var barra = el("span", { class: "pais-barra" }, el("i", { class: "pais-relleno" }));
       barra.firstChild.style.width = Math.max(3, (Number(x.accesos) / max) * 100) + "%";
-      caja.appendChild(el("div", { class: "pais-fila" },
+      lista.appendChild(el("div", { class: "pais-fila" },
         el("span", { class: "pais-bandera", "aria-hidden": "true" }, bandera(x.pais)),
         el("div", { class: "pais-datos" },
           el("div", { class: "pais-nombre" }, nombrePais(x.pais), el("span", { class: "pais-cod" }, x.pais === "??" ? "" : x.pais)),
@@ -1117,6 +1367,7 @@
         el("div", { class: "pais-num" }, el("b", {}, String(x.accesos)), " " + (Number(x.accesos) === 1 ? "acceso" : "accesos") +
           " · " + x.cuentas + (Number(x.cuentas) === 1 ? " cuenta" : " cuentas"))));
     });
+    caja.appendChild(lista);
   }
 
   function vistaRed(c, g) {
@@ -1147,7 +1398,7 @@
           el("thead", {}, el("tr", {}, ["Tipo", "Objetivo", "Fallos", "Estado", "Última vez", ""].map(function (t) { return el("th", {}, t); }))), cuerpo),
         vacio)));
 
-    api("admin_paises").then(function (r) { if (g === generacion) pintarPaises(paisesCaja, r); });
+    api("admin_paises").then(function (r) { if (g === generacion) pintarPaises(paisesCaja, r, g); });
 
     var muestras = [], pausado = false, enCurso = false;
     function dibujar() {

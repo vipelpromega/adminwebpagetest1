@@ -290,3 +290,40 @@ table.tabla { width: 100%; border-collapse: collapse; }
 .pais-relleno { display: block; height: 100%; border-radius: 3px; background: var(--accent); transition: width .6s var(--ease-out, ease); }
 .pais-num { font-size: 12px; color: var(--muted); text-align: right; white-space: nowrap; }
 @media (max-width: 560px) { .pais-num { white-space: normal; max-width: 110px; } }
+
+/* ---------- Mapa / globo ---------- */
+.mundo { margin: 6px 0 14px; }
+.mundo-barra { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 8px; }
+.mundo-svg { display: block; width: 100%; max-width: 520px; height: auto; margin: 0 auto; cursor: grab; touch-action: none; }
+.mundo-svg.plano { max-width: 900px; cursor: default; touch-action: auto; }
+.mundo-svg.arrastrando { cursor: grabbing; }
+.m-oceano { fill: var(--panel-2, var(--panel)); stroke: var(--border-2, var(--border)); stroke-width: 1; }
+.m-rejilla { fill: none; stroke: var(--border); stroke-width: .5; opacity: .6; }
+.m-pais { fill: var(--border-2, #555); fill-opacity: .55; stroke: var(--panel); stroke-width: .4; transition: fill-opacity .15s; }
+.m-pais.con { fill: var(--accent); stroke: var(--panel); stroke-width: .6; }
+.m-pais:hover { stroke: var(--text); stroke-width: 1; }
+.paises-lista { display: flex; flex-direction: column; gap: 10px; }
+
+/* ---------- Subpestañas de Perfiles ---------- */
+.subtabs { display: flex; gap: 4px; margin: 0 0 14px; border-bottom: 1px solid var(--border); }
+.subtab { padding: 8px 14px; color: var(--muted); text-decoration: none; border-bottom: 2px solid transparent; margin-bottom: -1px; transition: color .15s, border-color .15s; }
+.subtab:hover { color: var(--text); }
+.subtab.activa { color: var(--text); border-bottom-color: var(--accent); font-weight: 600; }
+.subtab:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+
+/* ---------- Registros de perfiles ---------- */
+.tabla-registros .col-chk { width: 36px; text-align: center; }
+.tabla-registros input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer; }
+.tabla-registros tr.marcada { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.nowrap { white-space: nowrap; }
+.pequeno-t { font-size: 12px; }
+.confirmar-panel:empty { display: none; }
+.confirmar-panel { margin: 8px 0; padding: 10px 12px; background: var(--panel); border: 1px solid var(--danger); border-radius: var(--radius); }
+.mas-fila { display: flex; justify-content: center; margin: 12px 0; }
+
+/* Botones Globo / Mapa */
+.mundo-barra .segmented { display: inline-flex; padding: 3px; gap: 2px; background: var(--panel-2, var(--hover)); border: 1px solid var(--border); border-radius: 8px; }
+.mundo-barra .seg { font: inherit; font-size: 13px; padding: 5px 14px; border: 0; border-radius: 6px; background: transparent; color: var(--muted); cursor: pointer; transition: background .15s, color .15s; }
+.mundo-barra .seg:hover { color: var(--text); }
+.mundo-barra .seg.selected { background: var(--accent); color: #fff; }
+.mundo-barra .seg:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
