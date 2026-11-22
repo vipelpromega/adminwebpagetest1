@@ -30,6 +30,9 @@ del repo público → entrar → copiar tu ID → `insert into public.admins ...
 Edita `js/config.js` (`sitioPublico`) para ver el estado de la web pública.
 
 ## Contraseña maestra (para restablecer contraseñas)
+
+Cada acción que la necesita (suspender/reactivar, restablecer contraseña, borrar claves, borrar registros) abre una **tarjeta flotante** al pulsar el botón: escribes la contraseña maestra ahí; si es incorrecta el error sale dentro de la tarjeta y puedes reintentar o cancelar (Escape).
+
 Se fija **una sola vez** desde el SQL Editor de Supabase (ver el final de `supabase/schema.sql` del repo
 público). Se guarda con bcrypt; el panel solo puede comprobarla, nunca leerla. Tras 5 fallos se bloquea 5 minutos.
 

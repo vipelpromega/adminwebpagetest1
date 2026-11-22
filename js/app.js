@@ -824,30 +824,26 @@
       // Suspender / reactivar la cuenta
       if (d.cuenta) {
         var susp = !!d.cuenta.suspendida;
-        var sMsg = el("p", { class: "f-error", role: "alert" });
-        var sMaestra = el("input", {
-          class: "f-input maestra-mini", type: "password", maxlength: "128", autocomplete: "off", spellcheck: "false",
-          placeholder: "Contraseña maestra", "aria-label": "Contraseña maestra para " + (susp ? "reactivar" : "suspender")
-        });
-        var sBtn = el("button", { type: "submit", class: susp ? "btn" : "btn danger" }, susp ? "Reactivar cuenta" : "Suspender cuenta");
-        var sForm = el("form", { novalidate: true, autocomplete: "off", class: "confirmar-fila", onsubmit: function (e) {
-          e.preventDefault(); sMsg.textContent = "";
-          if (!sMaestra.value) { sMsg.textContent = "Escribe la contraseña maestra."; sMaestra.focus(); return; }
-          sBtn.disabled = true;
-          api("admin_suspender_cuenta", { p_id: k.id, p_suspender: !susp, p_maestra: sMaestra.value }).then(function (r) {
-            sMaestra.value = "";
-            if (!document.body.contains(fondo)) return;
-            if (!r.ok) { sBtn.disabled = false; sMsg.textContent = msg(r); sMaestra.focus(); return; }
+        var sBtn = el("button", { type: "button", class: susp ? "btn" : "btn danger" }, susp ? "Reactivar cuenta" : "Suspender cuenta");
+        sBtn.addEventListener("click", function () {
+          pedirMaestra({
+            titulo: susp ? "Reactivar cuenta" : "Suspender cuenta",
+            texto: susp ? "La cuenta podrá volver a iniciar sesión. Escribe la contraseña maestra para confirmar."
+                        : "Se cerrarán todas sus sesiones y no podrá volver a entrar. Escribe la contraseña maestra para confirmar.",
+            boton: susp ? "Reactivar" : "Suspender", peligro: !susp,
+            ejecutar: function (m) { return api("admin_suspender_cuenta", { p_id: k.id, p_suspender: !susp, p_maestra: m }); }
+          }).then(function (r) {
+            if (!r || !document.body.contains(fondo)) return;
             if (alCambiar) alCambiar();
             cerrar();
             abrirDetalle(k, disparador, alCambiar);
           });
-        } }, sMaestra, sBtn);
+        });
         cuerpo.appendChild(el("section", { class: "suspender" }, el("h3", {}, "Suspender cuenta"),
           el("p", { class: "muted" }, susp
             ? "La cuenta no puede iniciar sesión. Sus datos se conservan. Pide la contraseña maestra para reactivarla."
             : "Cierra todas sus sesiones y le impide volver a entrar. Pide la contraseña maestra; puedes reactivarla cuando quieras."),
-          sMsg, sForm));
+          sBtn));
       }
 
       // Restablecer contraseña (necesita la contraseña maestra)
@@ -855,27 +851,81 @@
       if (!d.cuenta) {
         sec.appendChild(el("p", { class: "muted" }, "Esta clave todavía no se usó, así que no hay cuenta cuya contraseña restablecer."));
       } else {
-        var maestra = campoTexto({ id: "maestra", etiqueta: "Contraseña maestra:", tipo: "password", max: 128, autocomplete: "off",
-          ayuda: "La fijaste tú en Supabase; solo tú la conoces." });
         var nueva = campoTexto({ id: "nueva", etiqueta: "Nueva contraseña para la cuenta:", tipo: "password", max: 72, autocomplete: "new-password", ayuda: "Entre 8 y 72 caracteres." });
         var error = el("p", { class: "f-error", role: "alert" });
         var ok = el("p", { class: "f-ok", role: "status" });
         var boton = el("button", { type: "submit", class: "btn" }, "Restablecer contraseña");
         sec.appendChild(el("form", { novalidate: true, autocomplete: "off", onsubmit: function (e) {
           e.preventDefault(); error.textContent = ""; ok.textContent = "";
-          if (!maestra.input.value) { error.textContent = "Escribe la contraseña maestra."; return; }
           if (nueva.input.value.length < 8) { error.textContent = msg({ error: "clave_formato" }); return; }
-          boton.disabled = true;
-          api("admin_restablecer_clave", { p_id: k.id, p_maestra: maestra.input.value, p_nueva: nueva.input.value }).then(function (r) {
-            boton.disabled = false;
-            maestra.input.value = "";
-            if (!r.ok) { error.textContent = msg(r); return; }
+          var valor = nueva.input.value;
+          pedirMaestra({
+            titulo: "Restablecer contraseña", texto: "Se cambiará la contraseña de esta cuenta y se cerrarán sus sesiones. Escribe la contraseña maestra para confirmar.",
+            boton: "Restablecer",
+            ejecutar: function (m) { return api("admin_restablecer_clave", { p_id: k.id, p_maestra: m, p_nueva: valor }); }
+          }).then(function (r) {
+            if (!r) return;
             nueva.input.value = "";
             ok.textContent = "Contraseña restablecida. Se cerraron las sesiones de esa cuenta.";
           });
-        } }, maestra.grupo, nueva.grupo, error, ok, boton));
+        } }, nueva.grupo, error, ok, boton));
       }
       cuerpo.appendChild(sec);
+    });
+  }
+
+  /* ---------- Tarjeta flotante para la contraseña maestra ---------- */
+  // opciones: { titulo, texto, boton, peligro, ejecutar(maestra) → Promise<respuesta> }
+  // Devuelve una promesa con la respuesta correcta, o null si se cancela.
+  function pedirMaestra(op) {
+    return new Promise(function (resolver) {
+      var abridor = document.activeElement;
+      var error = el("p", { class: "f-error", role: "alert" });
+      var campo = el("input", {
+        class: "f-input", type: "password", maxlength: "128", autocomplete: "off", spellcheck: "false",
+        placeholder: "Contraseña maestra", "aria-label": "Contraseña maestra"
+      });
+      var si = el("button", { type: "submit", class: op.peligro ? "btn danger" : "btn" }, op.boton || "Confirmar");
+      var no = el("button", { type: "button", class: "btn secondary" }, "Cancelar");
+      var form = el("form", { class: "maestra-form", novalidate: true, autocomplete: "off" },
+        el("h2", { id: "maestra-titulo" }, op.titulo || "Contraseña maestra"),
+        el("p", { class: "muted" }, op.texto || "Esta acción necesita la contraseña maestra."),
+        campo, error, el("div", { class: "maestra-botones" }, no, si));
+      var tarjeta = el("div", { class: "modal maestra-tarjeta", role: "dialog", "aria-modal": "true", "aria-labelledby": "maestra-titulo" }, form);
+      var fondo = el("div", { class: "modal-fondo maestra-fondo" }, tarjeta);
+      var ocupado = false;
+      function cerrar(resultado) {
+        window.removeEventListener("keydown", tecla, true);
+        campo.value = "";
+        fondo.remove();
+        if (abridor && abridor.focus && document.body.contains(abridor)) abridor.focus();
+        resolver(resultado);
+      }
+      function tecla(e) {
+        if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); if (!ocupado) cerrar(null); }
+        else if (e.key === "Tab") { // el foco se queda dentro de la tarjeta
+          var f = [campo, no, si].filter(function (x) { return !x.disabled; });
+          var i = f.indexOf(document.activeElement);
+          if (e.shiftKey && i <= 0) { e.preventDefault(); f[f.length - 1].focus(); }
+          else if (!e.shiftKey && i === f.length - 1) { e.preventDefault(); f[0].focus(); }
+        }
+      }
+      window.addEventListener("keydown", tecla, true);
+      fondo.addEventListener("pointerdown", function (e) { if (e.target === fondo && !ocupado) cerrar(null); });
+      no.addEventListener("click", function () { if (!ocupado) cerrar(null); });
+      form.addEventListener("submit", function (e) {
+        e.preventDefault(); error.textContent = "";
+        if (!campo.value) { error.textContent = "Escribe la contraseña maestra."; campo.focus(); return; }
+        ocupado = true; si.disabled = true; no.disabled = true;
+        Promise.resolve(op.ejecutar(campo.value)).then(function (r) {
+          ocupado = false;
+          if (r && r.ok) { cerrar(r); return; }
+          si.disabled = false; no.disabled = false; campo.value = "";
+          error.textContent = msg(r || { error: "red" }); campo.focus();
+        });
+      });
+      document.body.appendChild(fondo);
+      campo.focus();
     });
   }
 
@@ -919,7 +969,6 @@
     var btnBorrarSel = el("button", { type: "button", class: "btn danger pequeno" }, "Borrar seleccionados");
     var btnBorrarTodos = el("button", { type: "button", class: "btn danger pequeno" }, "Borrar todos");
     var aviso = el("p", { class: "f-error", role: "alert" });
-    var panelBorrar = el("div", { class: "confirmar-panel" });
     var cuerpo = el("tbody"), vacio = el("div", { class: "vacio" }, "Cargando…");
     var masBtn = el("button", { type: "button", class: "btn secondary pequeno" }, "Cargar más");
     var cabecera = el("tr");
@@ -928,7 +977,7 @@
     c.appendChild(el("div", { class: "vista" },
       el("p", { class: "muted" }, "Lo que hacen las cuentas: ingresos, cambios y cierres de sesión, con su país y hora."),
       el("div", { class: "barra-herramientas" }, el("div", { class: "f-box" }, buscar.input), btnAct, btnSel, btnTodos, btnBorrarSel, btnBorrarTodos, cuenta),
-      aviso, panelBorrar, thEl, el("div", { class: "mas-fila" }, masBtn)));
+      aviso, thEl, el("div", { class: "mas-fila" }, masBtn)));
 
     function visibles() {
       var q = buscar.input.value.trim().toLowerCase();
@@ -993,33 +1042,21 @@
     }
 
     function pedirBorrado(descripcion, args) {
-      vaciar(panelBorrar); aviso.textContent = "";
-      var maestra = el("input", {
-        class: "f-input maestra-mini", type: "password", maxlength: "128", autocomplete: "off", spellcheck: "false",
-        placeholder: "Contraseña maestra", "aria-label": "Contraseña maestra para borrar registros"
+      aviso.textContent = "";
+      pedirMaestra({
+        titulo: "Borrar registros", texto: descripcion + " Esta acción no se puede deshacer. Escribe la contraseña maestra para confirmar.",
+        boton: "Borrar", peligro: true,
+        ejecutar: function (m) { args.p_maestra = m; return api("admin_borrar_registros_perfiles", args); }
+      }).then(function (r) {
+        if (!r || g !== generacion) return;
+        seleccionando = false; marcados = {}; cargar(false);
       });
-      var si = el("button", { type: "submit", class: "btn danger pequeno" }, "Borrar");
-      var no = el("button", { type: "button", class: "btn secondary pequeno" }, "Cancelar");
-      no.addEventListener("click", function () { vaciar(panelBorrar); });
-      panelBorrar.appendChild(el("form", { class: "confirmar", novalidate: true, autocomplete: "off", onsubmit: function (e) {
-        e.preventDefault(); aviso.textContent = "";
-        if (!maestra.value) { aviso.textContent = "Escribe la contraseña maestra para borrar."; maestra.focus(); return; }
-        si.disabled = true;
-        args.p_maestra = maestra.value;
-        api("admin_borrar_registros_perfiles", args).then(function (r) {
-          maestra.value = "";
-          if (g !== generacion) return;
-          if (!r.ok) { aviso.textContent = msg(r); si.disabled = false; maestra.focus(); return; }
-          vaciar(panelBorrar); seleccionando = false; cargar(false);
-        });
-      } }, el("div", { class: "confirmar-texto" }, descripcion + " Esta acción no se puede deshacer."), el("div", { class: "confirmar-fila" }, maestra, si, no)));
-      maestra.focus();
     }
 
     btnAct.addEventListener("click", function () { cargar(false); });
     masBtn.addEventListener("click", function () { cargar(true); });
     buscar.input.addEventListener("input", pintar);
-    btnSel.addEventListener("click", function () { seleccionando = !seleccionando; marcados = {}; vaciar(panelBorrar); pintar(); });
+    btnSel.addEventListener("click", function () { seleccionando = !seleccionando; marcados = {}; pintar(); });
     btnTodos.addEventListener("click", function () { visibles().forEach(function (x) { marcados[x.id] = true; }); pintar(); });
     btnBorrarSel.addEventListener("click", function () {
       var ids = Object.keys(marcados).map(Number);
@@ -1066,30 +1103,11 @@
       info.addEventListener("click", function () { abrirDetalle(k, info, cargar); });
       var botones = function () { vaciar(celda); celda.appendChild(info); celda.appendChild(borrar); };
       borrar.addEventListener("click", function () {
-        vaciar(celda);
-        var maestra = el("input", {
-          class: "f-input maestra-mini", type: "password", maxlength: "128", autocomplete: "off", spellcheck: "false",
-          placeholder: "Contraseña maestra", "aria-label": "Contraseña maestra para borrar"
-        });
-        var si = el("button", { type: "submit", class: "btn danger pequeno" }, "Borrar");
-        var no = el("button", { type: "button", class: "btn secondary pequeno" }, "Cancelar");
-        no.addEventListener("click", function () { aviso.textContent = ""; botones(); });
-        var form = el("form", { class: "confirmar", novalidate: true, autocomplete: "off", onsubmit: function (e) {
-          e.preventDefault();
-          aviso.textContent = "";
-          if (!maestra.value) { aviso.textContent = "Escribe la contraseña maestra para borrar."; maestra.focus(); return; }
-          si.disabled = true;
-          api("admin_borrar_clave", { p_id: k.id, p_maestra: maestra.value }).then(function (r) {
-            maestra.value = "";
-            if (g !== generacion) return;
-            if (!r.ok) { aviso.textContent = msg(r); si.disabled = false; maestra.focus(); return; }
-            cargar();
-          });
-        } },
-          el("div", { class: "confirmar-texto" }, k.estado === "usada" ? "Se borra también la cuenta." : "Se borra la clave."),
-          el("div", { class: "confirmar-fila" }, maestra, si, no));
-        celda.appendChild(form);
-        maestra.focus();
+        pedirMaestra({
+          titulo: "Borrar clave", texto: (k.estado === "usada" ? "Se borra también la cuenta que usó esta clave." : "Se borra la clave.") + " Esta acción no se puede deshacer. Escribe la contraseña maestra para confirmar.",
+          boton: "Borrar", peligro: true,
+          ejecutar: function (m) { return api("admin_borrar_clave", { p_id: k.id, p_maestra: m }); }
+        }).then(function (r) { if (r && g === generacion) cargar(); });
       });
       botones();
       return celda;
@@ -1206,12 +1224,11 @@
     var btnBorrarSel = el("button", { type: "button", class: "btn danger pequeno" }, "Borrar seleccionados");
     var btnBorrarTodos = el("button", { type: "button", class: "btn danger pequeno" }, "Borrar todos");
     var aviso = el("p", { class: "f-error", role: "alert" });
-    var panelBorrar = el("div", { class: "confirmar-panel" });
-    var cabecera = el("tr");
+        var cabecera = el("tr");
     var cuerpo = el("tbody");
     var vacio = el("div", { class: "vacio cargando" }, "Cargando…");
     c.appendChild(el("div", { class: "vista" },
-      el("div", { class: "barra-herramientas" }, filtro, refrescar, btnSel, btnTodos, btnBorrarSel, btnBorrarTodos, cuenta), aviso, panelBorrar,
+      el("div", { class: "barra-herramientas" }, filtro, refrescar, btnSel, btnTodos, btnBorrarSel, btnBorrarTodos, cuenta), aviso,
       el("div", { class: "tabla-envoltorio" },
         el("table", { class: "tabla tabla-registros" }, el("thead", {}, cabecera), cuerpo),
         vacio)));
@@ -1266,31 +1283,20 @@
       });
     }
     function pedirBorrado(descripcion, args) {
-      vaciar(panelBorrar); aviso.textContent = "";
-      var maestra = el("input", {
-        class: "f-input maestra-mini", type: "password", maxlength: "128", autocomplete: "off", spellcheck: "false",
-        placeholder: "Contraseña maestra", "aria-label": "Contraseña maestra para borrar registros"
+      aviso.textContent = "";
+      pedirMaestra({
+        titulo: "Borrar registros", texto: descripcion + " Esta acción no se puede deshacer. Escribe la contraseña maestra para confirmar.",
+        boton: "Borrar", peligro: true,
+        ejecutar: function (m) { args.p_maestra = m; return api("admin_borrar_registros", args); }
+      }).then(function (r) {
+        if (!r || g !== generacion) return;
+        seleccionando = false; marcados = {}; cargar();
       });
-      var si = el("button", { type: "submit", class: "btn danger pequeno" }, "Borrar");
-      var no = el("button", { type: "button", class: "btn secondary pequeno" }, "Cancelar");
-      no.addEventListener("click", function () { vaciar(panelBorrar); });
-      panelBorrar.appendChild(el("form", { class: "confirmar", novalidate: true, autocomplete: "off", onsubmit: function (e) {
-        e.preventDefault(); aviso.textContent = "";
-        if (!maestra.value) { aviso.textContent = "Escribe la contraseña maestra para borrar."; maestra.focus(); return; }
-        si.disabled = true;
-        args.p_maestra = maestra.value;
-        api("admin_borrar_registros", args).then(function (r) {
-          maestra.value = "";
-          if (g !== generacion) return;
-          if (!r.ok) { aviso.textContent = msg(r); si.disabled = false; maestra.focus(); return; }
-          vaciar(panelBorrar); seleccionando = false; marcados = {}; cargar();
-        });
-      } }, el("div", { class: "confirmar-texto" }, descripcion + " Esta acción no se puede deshacer."), el("div", { class: "confirmar-fila" }, maestra, si, no)));
-      maestra.focus();
     }
+
     filtro.addEventListener("change", pintar);
     refrescar.addEventListener("click", cargar);
-    btnSel.addEventListener("click", function () { seleccionando = !seleccionando; marcados = {}; vaciar(panelBorrar); pintar(); });
+    btnSel.addEventListener("click", function () { seleccionando = !seleccionando; marcados = {}; pintar(); });
     btnTodos.addEventListener("click", function () { visibles().forEach(function (x) { marcados[x.id] = true; }); pintar(); });
     btnBorrarSel.addEventListener("click", function () {
       var ids = Object.keys(marcados).map(Number);
