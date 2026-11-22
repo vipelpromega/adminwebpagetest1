@@ -717,11 +717,15 @@
       e.preventDefault();
       error.textContent = "";
       if (!Clave.nombreValido(nombre.input.value)) { error.textContent = msg({ error: "nombre_formato" }); return; }
+      var nombreFinal = nombre.input.value.trim();
       boton.disabled = true;
-      api("admin_crear_clave", { p_nombre: nombre.input.value.trim() }).then(function (r) {
+      pedirMaestra({
+        titulo: "Crear clave", texto: "Se creará la clave para «" + nombreFinal + "». Escribe la contraseña maestra para confirmar.",
+        boton: "Crear clave",
+        ejecutar: function (m) { return api("admin_crear_clave", { p_nombre: nombreFinal, p_maestra: m }); }
+      }).then(function (r) {
         boton.disabled = false;
-        if (g !== generacion) return;
-        if (!r.ok) { error.textContent = msg(r); return; }
+        if (!r || g !== generacion) return;
         nombre.input.value = "";
         recalcular();
         mostrarResultado(r);
@@ -890,7 +894,7 @@
       var form = el("form", { class: "maestra-form", novalidate: true, autocomplete: "off" },
         el("h2", { id: "maestra-titulo" }, op.titulo || "Contraseña maestra"),
         el("p", { class: "muted" }, op.texto || "Esta acción necesita la contraseña maestra."),
-        campo, error, el("div", { class: "maestra-botones" }, no, si));
+        el("div", { class: "f-box" }, campo), error, el("div", { class: "maestra-botones" }, no, si));
       var tarjeta = el("div", { class: "modal maestra-tarjeta", role: "dialog", "aria-modal": "true", "aria-labelledby": "maestra-titulo" }, form);
       var fondo = el("div", { class: "modal-fondo maestra-fondo" }, tarjeta);
       var ocupado = false;
