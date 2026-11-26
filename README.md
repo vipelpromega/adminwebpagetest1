@@ -59,3 +59,7 @@ Lista lo que hacen las cuentas (ingresos, registro, cambios de nombre, foto o co
 ## Registros: borrar
 
 En **Registros**, «Seleccionar» muestra casillas (con «Seleccionar todo»); «Borrar seleccionados» y «Borrar todos» piden la **contraseña maestra**. El propio borrado queda anotado como «Borró registros».
+
+
+## Administradores de la página principal
+En Perfiles → detalle de la cuenta (ícono de información) está «Hacer administrador» / «Quitar administrador». Pide la contraseña maestra, queda en la Consola y esa cuenta lleva un sello de verificado junto a su nombre en la página principal (visible para todos). Las filas de Perfiles muestran la insignia «Administrador». Requiere volver a ejecutar `supabase/schema.sql` del repositorio principal.

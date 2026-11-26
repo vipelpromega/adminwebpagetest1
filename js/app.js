@@ -412,6 +412,7 @@
   }
 
   function insigniaSuspendida() { return el("span", { class: "badge suspendida" }, "Suspendida"); }
+  function insigniaAdminWeb() { return el("span", { class: "badge admin-web" }, "Administrador"); }
 
   /* ---------- Gráficas (SVG, sin librerías) ---------- */
   var NS_SVG = "http://www.w3.org/2000/svg";
@@ -543,7 +544,7 @@
         lista.appendChild(el("div", { class: "fila" },
           el("div", {}, el("div", {}, k.etiqueta),
             el("div", { class: "sub" }, "Creada " + fmtFecha(k.creado))),
-          el("div", { class: "fila-insignias" }, k.suspendida ? insigniaSuspendida() : null, insignia(k.estado))));
+          el("div", { class: "fila-insignias" }, k.admin_web ? insigniaAdminWeb() : null, k.suspendida ? insigniaSuspendida() : null, insignia(k.estado))));
       });
     });
   }
@@ -822,8 +823,34 @@
         d.cuenta ? fila("País de registro", d.cuenta.pais_registro ? bandera(d.cuenta.pais_registro) + " " + nombrePais(d.cuenta.pais_registro) : "Desconocido") : null,
         d.cuenta && d.cuenta.paises && d.cuenta.paises.length ? fila("Países de acceso", d.cuenta.paises.map(function (c) { return (c === "??" ? "" : bandera(c) + " ") + nombrePais(c); }).join(", ")) : null,
         d.cuenta ? fila("Estado de la cuenta", d.cuenta.suspendida ? "Suspendida desde " + fmtFecha(d.cuenta.suspendida_en) : "Activa") : null,
+        d.cuenta ? fila("Administrador de la página", d.cuenta.admin_web ? "Sí" : "No") : null,
         fila("Foto de perfil", d.cuenta ? elemAvatar(d.cuenta) : "Sin cuenta todavía")));
       cuerpo.appendChild(errorClave);
+
+      // Administrador de la página principal (insignia de verificado junto al nombre)
+      if (d.cuenta) {
+        var esAdm = !!d.cuenta.admin_web;
+        var aBtn = el("button", { type: "button", class: esAdm ? "btn danger" : "btn" }, esAdm ? "Quitar administrador" : "Hacer administrador");
+        aBtn.addEventListener("click", function () {
+          pedirMaestra({
+            titulo: esAdm ? "Quitar administrador" : "Hacer administrador",
+            texto: esAdm ? "La cuenta dejará de ser administradora de la página y perderá su insignia. Escribe la contraseña maestra para confirmar."
+                         : "La cuenta será administradora de la página principal y todos verán su insignia de verificado junto al nombre. Escribe la contraseña maestra para confirmar.",
+            boton: esAdm ? "Quitar" : "Hacer administrador", peligro: esAdm,
+            ejecutar: function (m) { return api("admin_asignar_admin_web", { p_id: k.id, p_valor: !esAdm, p_maestra: m }); }
+          }).then(function (r) {
+            if (!r || !document.body.contains(fondo)) return;
+            if (alCambiar) alCambiar();
+            cerrar();
+            abrirDetalle(k, disparador, alCambiar);
+          });
+        });
+        cuerpo.appendChild(el("section", { class: "suspender" }, el("h3", {}, "Administrador de la página"),
+          el("p", { class: "muted" }, esAdm
+            ? "Es administradora de la página principal: todos ven una insignia de verificado junto a su nombre."
+            : "Los administradores de la página principal llevan una insignia de verificado junto al nombre, visible para todos."),
+          aBtn));
+      }
 
       // Suspender / reactivar la cuenta
       if (d.cuenta) {
@@ -1128,7 +1155,7 @@
       visibles.forEach(function (k) {
         cuerpo.appendChild(el("tr", {},
           el("td", {}, k.etiqueta),
-          el("td", {}, el("div", { class: "fila-insignias" }, insignia(k.estado), k.suspendida ? insigniaSuspendida() : null)),
+          el("td", {}, el("div", { class: "fila-insignias" }, insignia(k.estado), k.admin_web ? insigniaAdminWeb() : null, k.suspendida ? insigniaSuspendida() : null)),
           accion(k)));
       });
       cuenta.textContent = visibles.length + " de " + claves.length;
@@ -1201,7 +1228,9 @@
   var ACCIONES = {
     acceso_admin: "Entró al panel", crear_clave: "Creó una clave", ver_clave: "Vio una clave",
     borrar_clave: "Borró una clave", cuenta_creada: "Se creó una cuenta", consola: "Comando de consola",
-    desbloquear: "Desbloqueó", borrar_registros: "Borró registros", borrar_registros_perfiles: "Borró registros de perfiles"
+    desbloquear: "Desbloqueó", borrar_registros: "Borró registros", borrar_registros_perfiles: "Borró registros de perfiles",
+    suspender_cuenta: "Suspendió una cuenta", reactivar_cuenta: "Reactivó una cuenta",
+    asignar_admin_web: "Hizo administrador de la página", quitar_admin_web: "Quitó administrador de la página"
   };
   function detalleTexto(d) {
     if (!d || typeof d !== "object") return "";
