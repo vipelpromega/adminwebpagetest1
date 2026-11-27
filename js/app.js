@@ -412,6 +412,7 @@
   }
 
   function insigniaSuspendida() { return el("span", { class: "badge suspendida" }, "Suspendida"); }
+  function insigniaFundador() { return el("span", { class: "badge fundador-web" }, "Fundador"); }
   function insigniaAdminWeb() { return el("span", { class: "badge admin-web" }, "Administrador"); }
 
   /* ---------- Gráficas (SVG, sin librerías) ---------- */
@@ -544,7 +545,7 @@
         lista.appendChild(el("div", { class: "fila" },
           el("div", {}, el("div", {}, k.etiqueta),
             el("div", { class: "sub" }, "Creada " + fmtFecha(k.creado))),
-          el("div", { class: "fila-insignias" }, k.admin_web ? insigniaAdminWeb() : null, k.suspendida ? insigniaSuspendida() : null, insignia(k.estado))));
+          el("div", { class: "fila-insignias" }, k.fundador ? insigniaFundador() : null, k.admin_web ? insigniaAdminWeb() : null, k.suspendida ? insigniaSuspendida() : null, insignia(k.estado))));
       });
     });
   }
@@ -823,7 +824,7 @@
         d.cuenta ? fila("País de registro", d.cuenta.pais_registro ? bandera(d.cuenta.pais_registro) + " " + nombrePais(d.cuenta.pais_registro) : "Desconocido") : null,
         d.cuenta && d.cuenta.paises && d.cuenta.paises.length ? fila("Países de acceso", d.cuenta.paises.map(function (c) { return (c === "??" ? "" : bandera(c) + " ") + nombrePais(c); }).join(", ")) : null,
         d.cuenta ? fila("Estado de la cuenta", d.cuenta.suspendida ? "Suspendida desde " + fmtFecha(d.cuenta.suspendida_en) : "Activa") : null,
-        d.cuenta ? fila("Administrador de la página", d.cuenta.admin_web ? "Sí" : "No") : null,
+        d.cuenta ? fila("Roles", [d.cuenta.fundador ? "Fundador" : null, d.cuenta.admin_web ? "Administrador" : null].filter(Boolean).join(", ") || "Ninguno") : null,
         fila("Foto de perfil", d.cuenta ? elemAvatar(d.cuenta) : "Sin cuenta todavía")));
       cuerpo.appendChild(errorClave);
 
@@ -1155,7 +1156,7 @@
       visibles.forEach(function (k) {
         cuerpo.appendChild(el("tr", {},
           el("td", {}, k.etiqueta),
-          el("td", {}, el("div", { class: "fila-insignias" }, insignia(k.estado), k.admin_web ? insigniaAdminWeb() : null, k.suspendida ? insigniaSuspendida() : null)),
+          el("td", {}, el("div", { class: "fila-insignias" }, insignia(k.estado), k.fundador ? insigniaFundador() : null, k.admin_web ? insigniaAdminWeb() : null, k.suspendida ? insigniaSuspendida() : null)),
           accion(k)));
       });
       cuenta.textContent = visibles.length + " de " + claves.length;
@@ -1230,7 +1231,7 @@
     borrar_clave: "Borró una clave", cuenta_creada: "Se creó una cuenta", consola: "Comando de consola",
     desbloquear: "Desbloqueó", borrar_registros: "Borró registros", borrar_registros_perfiles: "Borró registros de perfiles",
     suspender_cuenta: "Suspendió una cuenta", reactivar_cuenta: "Reactivó una cuenta",
-    asignar_admin_web: "Hizo administrador de la página", quitar_admin_web: "Quitó administrador de la página"
+    asignar_fundador: "Asignó el rol de Fundador", asignar_admin_web: "Hizo administrador de la página", quitar_admin_web: "Quitó administrador de la página"
   };
   function detalleTexto(d) {
     if (!d || typeof d !== "object") return "";

@@ -277,7 +277,8 @@ table.tabla { width: 100%; border-collapse: collapse; }
 
 /* ---------- Cuenta suspendida ---------- */
 .badge.suspendida { color: var(--danger); border-color: var(--danger); }
-.badge.admin-web { color: var(--accent); border-color: var(--accent); }
+.badge.admin-web { color: #a259ff; border-color: #a259ff; }
+.badge.fundador-web { color: #1d8cf8; border-color: #1d8cf8; }
 .fila-insignias { display: inline-flex; gap: 6px; flex-wrap: wrap; align-items: center; }
 
 /* ---------- Países de acceso ---------- */
