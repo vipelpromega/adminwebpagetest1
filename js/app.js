@@ -58,6 +58,12 @@
       case "clave_formato": return "La contraseña nueva debe tener entre 8 y 72 caracteres.";
       case "nada_que_borrar": return "No hay registros seleccionados.";
       case "sin_cuenta": return "Esta clave todavía no tiene cuenta.";
+      case "rol_repetido": return "Ya existe un rol con ese nombre.";
+      case "rol_invalido": return "Revisa los datos del rol: nombre (1-30), descripción (hasta 200), prioridad (1-999) y colores válidos.";
+      case "rol_sistema": return "Los roles del sistema no se pueden borrar.";
+      case "solo_consola": return "El rol de Fundador solo se asigna desde la Consola.";
+      case "demasiados_roles": return "Ya hay demasiados roles (máximo 40).";
+      case "no_existe": return "Ese rol ya no existe.";
       case "espera": return "Demasiados intentos. Espera " + (r.segundos || 60) + " s.";
       case "permiso": return "El servidor rechazó la petición.";
       case "sin_script": return "El servidor no está listo: falta ejecutar supabase/schema.sql en Supabase.";
@@ -82,6 +88,7 @@
     consola: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9l3 3-3 3M12 15h5"/>',
     autenticacion: '<circle cx="8" cy="15" r="4"/><path d="M11 12l9-9"/><path d="M16 7l3 3"/><path d="M14 9l2 2"/>',
     perfiles: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c0-3.5 3-6 6.5-6s6.5 2.5 6.5 6"/><circle cx="17.5" cy="9" r="2.5"/><path d="M18 14.2c2.3.3 3.8 2.2 3.8 4.8"/>',
+    roles: '<path d="M12 3l7 3v5c0 4.4-2.9 8.2-7 10-4.1-1.8-7-5.6-7-10V6l7-3z"/><path d="M9 12l2.2 2.2L15.2 10"/>',
     registros: '<path d="M8 6h13M8 12h13M8 18h13"/><path d="M3 6h.01M3 12h.01M3 18h.01"/>',
     red: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/>',
     menu: '<path d="M4 6h16M4 12h16M4 18h16"/>',
@@ -319,6 +326,7 @@
     { id: "consola", nombre: "Consola", sub: "Comandos seguros (no hay SQL libre)", render: vistaConsola },
     { id: "autenticacion", nombre: "Autenticación", sub: "Crear claves de registro", render: vistaAutenticacion },
     { id: "perfiles", nombre: "Perfiles", sub: "Claves, cuentas y lo que hacen", render: vistaPerfiles },
+    { id: "roles", nombre: "Roles", sub: "Crear, editar y borrar roles", render: vistaRoles },
     { id: "registros", nombre: "Registros", sub: "Historial de acciones", render: vistaRegistros },
     { id: "red", nombre: "Red", sub: "Intentos fallidos, bloqueos y latencia", render: vistaRed }
   ];
@@ -412,8 +420,15 @@
   }
 
   function insigniaSuspendida() { return el("span", { class: "badge suspendida" }, "Suspendida"); }
-  function insigniaFundador() { return el("span", { class: "badge fundador-web" }, "Fundador"); }
-  function insigniaAdminWeb() { return el("span", { class: "badge admin-web" }, "Administrador"); }
+  // Dibujo de un rol (el SVG sale de valores validados: listas fijas y colores #rrggbb)
+  function iconoRolNodo(r, tam) {
+    var s = el("span", { class: "rol-ico", "aria-hidden": "true" });
+    s.innerHTML = window.RolIcono.svg(r);
+    if (tam) { s.firstChild.setAttribute("width", tam); s.firstChild.setAttribute("height", tam); }
+    return s;
+  }
+  function insigniaRol(r) { return el("span", { class: "badge rol-badge" }, iconoRolNodo(r, 14), el("span", {}, r.nombre)); }
+  function insigniasRoles(roles) { return (roles || []).map(insigniaRol); }
 
   /* ---------- Gráficas (SVG, sin librerías) ---------- */
   var NS_SVG = "http://www.w3.org/2000/svg";
@@ -545,7 +560,7 @@
         lista.appendChild(el("div", { class: "fila" },
           el("div", {}, el("div", {}, k.etiqueta),
             el("div", { class: "sub" }, "Creada " + fmtFecha(k.creado))),
-          el("div", { class: "fila-insignias" }, k.fundador ? insigniaFundador() : null, k.admin_web ? insigniaAdminWeb() : null, k.suspendida ? insigniaSuspendida() : null, insignia(k.estado))));
+          el("div", { class: "fila-insignias" }, insigniasRoles(k.roles), k.suspendida ? insigniaSuspendida() : null, insignia(k.estado))));
       });
     });
   }
@@ -824,33 +839,44 @@
         d.cuenta ? fila("País de registro", d.cuenta.pais_registro ? bandera(d.cuenta.pais_registro) + " " + nombrePais(d.cuenta.pais_registro) : "Desconocido") : null,
         d.cuenta && d.cuenta.paises && d.cuenta.paises.length ? fila("Países de acceso", d.cuenta.paises.map(function (c) { return (c === "??" ? "" : bandera(c) + " ") + nombrePais(c); }).join(", ")) : null,
         d.cuenta ? fila("Estado de la cuenta", d.cuenta.suspendida ? "Suspendida desde " + fmtFecha(d.cuenta.suspendida_en) : "Activa") : null,
-        d.cuenta ? fila("Roles", [d.cuenta.fundador ? "Fundador" : null, d.cuenta.admin_web ? "Administrador" : null].filter(Boolean).join(", ") || "Ninguno") : null,
+        d.cuenta ? fila("Roles", d.cuenta.roles && d.cuenta.roles.length ? el("span", { class: "fila-insignias" }, insigniasRoles(d.cuenta.roles)) : "Ninguno") : null,
         fila("Foto de perfil", d.cuenta ? elemAvatar(d.cuenta) : "Sin cuenta todavía")));
       cuerpo.appendChild(errorClave);
 
-      // Administrador de la página principal (insignia de verificado junto al nombre)
+      // Roles de la cuenta: tocar un rol lo da o lo quita (pide la contraseña maestra)
       if (d.cuenta) {
-        var esAdm = !!d.cuenta.admin_web;
-        var aBtn = el("button", { type: "button", class: esAdm ? "btn danger" : "btn" }, esAdm ? "Quitar administrador" : "Hacer administrador");
-        aBtn.addEventListener("click", function () {
-          pedirMaestra({
-            titulo: esAdm ? "Quitar administrador" : "Hacer administrador",
-            texto: esAdm ? "La cuenta dejará de ser administradora de la página y perderá su insignia. Escribe la contraseña maestra para confirmar."
-                         : "La cuenta será administradora de la página principal y todos verán su insignia de verificado junto al nombre. Escribe la contraseña maestra para confirmar.",
-            boton: esAdm ? "Quitar" : "Hacer administrador", peligro: esAdm,
-            ejecutar: function (m) { return api("admin_asignar_admin_web", { p_id: k.id, p_valor: !esAdm, p_maestra: m }); }
-          }).then(function (r) {
-            if (!r || !document.body.contains(fondo)) return;
-            if (alCambiar) alCambiar();
-            cerrar();
-            abrirDetalle(k, disparador, alCambiar);
+        var zona = el("div", { class: "roles-asignar" }, el("p", { class: "muted cargando" }, "Cargando roles…"));
+        cuerpo.appendChild(el("section", { class: "suspender" }, el("h3", {}, "Roles de la cuenta"),
+          el("p", { class: "muted" }, "Toca un rol para dárselo o quitárselo. Junto al nombre se muestra el de prioridad más baja."), zona));
+        var tiene = {};
+        (d.cuenta.roles || []).forEach(function (r) { tiene[r.id] = true; });
+        api("admin_listar_roles").then(function (lr) {
+          if (!document.body.contains(fondo)) return;
+          vaciar(zona);
+          if (!lr.ok) { zona.appendChild(el("p", { class: "f-error", role: "alert" }, msg(lr))); return; }
+          var err = el("p", { class: "f-error", role: "alert" });
+          lr.roles.forEach(function (r) {
+            var b = el("button", { type: "button", class: "rol-chip" + (tiene[r.id] ? " activo" : ""), "aria-pressed": String(!!tiene[r.id]), title: r.id === "fundador" ? "Solo se asigna desde la Consola" : null },
+              iconoRolNodo(r, 18), el("span", {}, r.nombre), tiene[r.id] ? el("span", { class: "rol-chip-marca", "aria-hidden": "true" }, "✓") : null);
+            if (r.id === "fundador") b.disabled = true;
+            b.addEventListener("click", function () {
+              var dar = !tiene[r.id];
+              pedirMaestra({
+                titulo: (dar ? "Dar el rol «" : "Quitar el rol «") + r.nombre + "»",
+                texto: (dar ? "La cuenta recibirá este rol y todos verán su icono (si es el de prioridad más baja, junto al nombre)." : "La cuenta perderá este rol y su icono.") + " Escribe la contraseña maestra para confirmar.",
+                boton: dar ? "Dar rol" : "Quitar rol", peligro: !dar,
+                ejecutar: function (m) { return api("admin_asignar_rol", { p_id: k.id, p_rol: r.id, p_valor: dar, p_maestra: m }); }
+              }).then(function (res) {
+                if (!res || !document.body.contains(fondo)) return;
+                if (alCambiar) alCambiar();
+                cerrar();
+                abrirDetalle(k, disparador, alCambiar);
+              });
+            });
+            zona.appendChild(b);
           });
+          zona.appendChild(err);
         });
-        cuerpo.appendChild(el("section", { class: "suspender" }, el("h3", {}, "Administrador de la página"),
-          el("p", { class: "muted" }, esAdm
-            ? "Es administradora de la página principal: todos ven una insignia de verificado junto a su nombre."
-            : "Los administradores de la página principal llevan una insignia de verificado junto al nombre, visible para todos."),
-          aBtn));
       }
 
       // Suspender / reactivar la cuenta
@@ -1156,7 +1182,7 @@
       visibles.forEach(function (k) {
         cuerpo.appendChild(el("tr", {},
           el("td", {}, k.etiqueta),
-          el("td", {}, el("div", { class: "fila-insignias" }, insignia(k.estado), k.fundador ? insigniaFundador() : null, k.admin_web ? insigniaAdminWeb() : null, k.suspendida ? insigniaSuspendida() : null)),
+          el("td", {}, el("div", { class: "fila-insignias" }, insignia(k.estado), insigniasRoles(k.roles), k.suspendida ? insigniaSuspendida() : null)),
           accion(k)));
       });
       cuenta.textContent = visibles.length + " de " + claves.length;
@@ -1226,12 +1252,141 @@
   }
 
   /* ---------- Registros ---------- */
+  /* ---------- Roles ---------- */
+  function abrirEditorRol(rol, alGuardar) {
+    var RI = window.RolIcono, previo = document.activeElement;
+    var est = rol ? { forma: rol.forma, simbolo: rol.simbolo, c1: rol.c1, c2: rol.c2 }
+                  : { forma: "dentado", simbolo: "palomita", c1: "#1d8cf8", c2: "#6c2fe6" };
+    var degradado = rol ? !!rol.c2 : true;
+    var nombre = campoTexto({ id: "rol-nombre", etiqueta: "Nombre", max: 30 });
+    var desc = campoTexto({ id: "rol-desc", etiqueta: "Descripción (se ve en la página Roles)", max: 200 });
+    var prio = campoTexto({ id: "rol-prio", etiqueta: "Prioridad (1 = la más alta)", max: 3, inputmode: "numeric", ayuda: "Junto al nombre se muestra el icono del rol con el número más bajo." });
+    nombre.input.value = rol ? rol.nombre : ""; desc.input.value = rol ? rol.descripcion : ""; prio.input.value = rol ? rol.prioridad : "100";
+    var vista = el("div", { class: "rol-vista" });
+    function aspecto() { return { id: rol ? rol.id : "nuevo", forma: est.forma, simbolo: est.simbolo, c1: est.c1, c2: degradado ? est.c2 : null }; }
+    function pintarVista() {
+      vaciar(vista);
+      vista.appendChild(iconoRolNodo(aspecto(), 64));
+      vista.appendChild(iconoRolNodo(aspecto(), 32));
+      vista.appendChild(iconoRolNodo(aspecto(), 16));
+      vista.appendChild(el("span", { class: "muted" }, "Vista previa"));
+    }
+    function selector(titulo, claves, etiquetas, campo) {
+      var grupo = el("div", { class: "rol-sel", role: "radiogroup", "aria-label": titulo });
+      claves.forEach(function (k) {
+        var b = el("button", { type: "button", class: "rol-op" + (est[campo] === k ? " activo" : ""), role: "radio", "aria-checked": String(est[campo] === k), title: etiquetas[k] });
+        var m = {}; m.id = "op"; m.forma = campo === "forma" ? k : "ninguna"; m.simbolo = campo === "simbolo" ? k : "ninguno";
+        if (campo === "forma") { m.simbolo = "ninguno"; }
+        m.c1 = "#8a8f98"; m.c2 = null;
+        if (k === "ninguna" || k === "ninguno") b.appendChild(el("span", { class: "rol-op-nada" }, "∅"));
+        else b.appendChild(iconoRolNodo(m, 24));
+        b.addEventListener("click", function () {
+          est[campo] = k;
+          Array.prototype.forEach.call(grupo.children, function (x) { x.classList.remove("activo"); x.setAttribute("aria-checked", "false"); });
+          b.classList.add("activo"); b.setAttribute("aria-checked", "true");
+          pintarVista();
+        });
+        grupo.appendChild(b);
+      });
+      return el("div", { class: "f-group" }, el("span", { class: "f-label" }, titulo), grupo);
+    }
+    var c1 = el("input", { type: "color", class: "rol-color", value: est.c1, "aria-label": "Color" });
+    var c2 = el("input", { type: "color", class: "rol-color", value: est.c2 || "#6c2fe6", "aria-label": "Segundo color" });
+    var modoS = el("button", { type: "button", class: "rol-modo" + (degradado ? "" : " activo"), role: "radio", "aria-checked": String(!degradado) }, "Color sólido");
+    var modoD = el("button", { type: "button", class: "rol-modo" + (degradado ? " activo" : ""), role: "radio", "aria-checked": String(degradado) }, "Degradado");
+    function modo(d) {
+      degradado = d;
+      modoS.classList.toggle("activo", !d); modoD.classList.toggle("activo", d);
+      modoS.setAttribute("aria-checked", String(!d)); modoD.setAttribute("aria-checked", String(d));
+      c2.hidden = !d; pintarVista();
+    }
+    modoS.addEventListener("click", function () { modo(false); }); modoD.addEventListener("click", function () { modo(true); });
+    c1.addEventListener("input", function () { est.c1 = c1.value; pintarVista(); });
+    c2.addEventListener("input", function () { est.c2 = c2.value; pintarVista(); });
+    c2.hidden = !degradado;
+    var error = el("p", { class: "f-error", role: "alert" });
+    var guardar = el("button", { type: "submit", class: "btn" }, rol ? "Guardar cambios" : "Crear rol");
+    var cancelar = el("button", { type: "button", class: "btn secondary" }, "Cancelar");
+    var form = el("form", { novalidate: true, autocomplete: "off" },
+      el("div", { class: "modal-cab" }, el("h2", {}, rol ? "Editar rol" : "Crear rol")),
+      vista, nombre.grupo, desc.grupo, prio.grupo,
+      selector("Forma", RI.formas, RI.etqFormas, "forma"),
+      selector("Símbolo", RI.simbolos, RI.etqSimbolos, "simbolo"),
+      el("div", { class: "f-group" }, el("span", { class: "f-label" }, "Color"),
+        el("div", { class: "rol-colores" }, modoS, modoD, c1, c2)),
+      error, el("div", { class: "maestra-botones" }, cancelar, guardar));
+    var fondo = el("div", { class: "modal-fondo" }, el("div", { class: "modal rol-editor", role: "dialog", "aria-modal": "true", "aria-label": rol ? "Editar rol" : "Crear rol" }, form));
+    function cerrar() { document.removeEventListener("keydown", tecla, true); fondo.remove(); if (previo && previo.focus) previo.focus(); }
+    function tecla(e) { if (e.key === "Escape" && !document.querySelector(".maestra-fondo")) { e.stopPropagation(); cerrar(); } }
+    document.addEventListener("keydown", tecla, true);
+    cancelar.addEventListener("click", cerrar);
+    fondo.addEventListener("pointerdown", function (e) { if (e.target === fondo) cerrar(); });
+    limpiezas.push(cerrar);
+    form.addEventListener("submit", function (e) {
+      e.preventDefault(); error.textContent = "";
+      var n = nombre.input.value.trim(), p = parseInt(prio.input.value, 10);
+      if (!n) { error.textContent = "Escribe un nombre."; nombre.input.focus(); return; }
+      if (!(p >= 1 && p <= 999)) { error.textContent = "La prioridad es un número entre 1 y 999."; prio.input.focus(); return; }
+      if (est.forma === "ninguna" && est.simbolo === "ninguno") { error.textContent = "Elige al menos una forma o un símbolo."; return; }
+      var a = aspecto();
+      pedirMaestra({
+        titulo: rol ? "Guardar cambios del rol" : "Crear rol", texto: "Escribe la contraseña maestra para confirmar.", boton: rol ? "Guardar" : "Crear",
+        ejecutar: function (m) {
+          return api("admin_guardar_rol", { p_id: rol ? rol.id : null, p_nombre: n, p_descripcion: desc.input.value.trim(), p_prioridad: p,
+            p_forma: a.forma, p_simbolo: a.simbolo, p_c1: a.c1, p_c2: a.c2, p_maestra: m });
+        }
+      }).then(function (r) { if (r) { cerrar(); alGuardar(); } });
+    });
+    pintarVista();
+    raiz.appendChild(fondo);
+    nombre.input.focus();
+  }
+
+  function vistaRoles(c, g) {
+    var lista = el("div", { class: "roles-lista" }, el("p", { class: "muted" }, "Cargando…"));
+    var crear = el("button", { type: "button", class: "btn" }, "Crear rol");
+    var aviso = el("p", { class: "f-error", role: "alert" });
+    c.appendChild(el("div", { class: "vista" },
+      el("div", { class: "barra-herramientas" }, crear, el("span", { class: "muted" }, "Los roles del sistema (Fundador y Administrador) se pueden editar pero no borrar.")),
+      aviso, lista));
+    function cargar() {
+      api("admin_listar_roles").then(function (r) {
+        if (g !== generacion) return;
+        vaciar(lista);
+        if (!r.ok) { aviso.textContent = msg(r); return; }
+        aviso.textContent = "";
+        r.roles.forEach(function (x) {
+          var editar = el("button", { type: "button", class: "btn secondary pequeno" }, "Editar");
+          editar.addEventListener("click", function () { abrirEditorRol(x, cargar); });
+          var borrar = x.sistema ? null : el("button", { type: "button", class: "btn secondary pequeno" }, "Borrar");
+          if (borrar) borrar.addEventListener("click", function () {
+            pedirMaestra({
+              titulo: "Borrar rol «" + x.nombre + "»", boton: "Borrar", peligro: true,
+              texto: "Se quita este rol a las " + x.usuarios + " cuenta(s) que lo tienen. Esta acción no se puede deshacer. Escribe la contraseña maestra para confirmar.",
+              ejecutar: function (m) { return api("admin_borrar_rol", { p_id: x.id, p_maestra: m }); }
+            }).then(function (res) { if (res) cargar(); });
+          });
+          lista.appendChild(el("div", { class: "rol-fila" },
+            iconoRolNodo(x, 40),
+            el("div", { class: "rol-datos" },
+              el("div", { class: "rol-nombre" }, x.nombre, x.sistema ? el("span", { class: "badge" }, "Sistema") : null),
+              el("div", { class: "muted" }, x.descripcion || "Sin descripción"),
+              el("div", { class: "muted rol-meta" }, "Prioridad " + x.prioridad + " · " + x.usuarios + (x.usuarios === 1 ? " cuenta" : " cuentas"))),
+            el("div", { class: "acciones" }, editar, borrar)));
+        });
+      });
+    }
+    crear.addEventListener("click", function () { abrirEditorRol(null, cargar); });
+    cargar();
+  }
+
   var ACCIONES = {
     acceso_admin: "Entró al panel", crear_clave: "Creó una clave", ver_clave: "Vio una clave",
     borrar_clave: "Borró una clave", cuenta_creada: "Se creó una cuenta", consola: "Comando de consola",
     desbloquear: "Desbloqueó", borrar_registros: "Borró registros", borrar_registros_perfiles: "Borró registros de perfiles",
     suspender_cuenta: "Suspendió una cuenta", reactivar_cuenta: "Reactivó una cuenta",
-    asignar_fundador: "Asignó el rol de Fundador", asignar_admin_web: "Hizo administrador de la página", quitar_admin_web: "Quitó administrador de la página"
+    asignar_fundador: "Asignó el rol de Fundador", asignar_admin_web: "Hizo administrador de la página", quitar_admin_web: "Quitó administrador de la página",
+    crear_rol: "Creó un rol", editar_rol: "Editó un rol", borrar_rol: "Borró un rol", asignar_rol: "Dio un rol", quitar_rol: "Quitó un rol"
   };
   function detalleTexto(d) {
     if (!d || typeof d !== "object") return "";

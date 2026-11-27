@@ -339,3 +339,33 @@ table.tabla { width: 100%; border-collapse: collapse; }
 .maestra-form .f-input { width: 100%; }
 .maestra-form .f-error { min-height: 1.2em; margin: 6px 0 0; }
 .maestra-botones { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
+
+/* ---------- Roles ---------- */
+.rol-ico { display: inline-grid; place-items: center; flex-shrink: 0; }
+.rol-ico svg { display: block; }
+.rol-badge { display: inline-flex; align-items: center; gap: 5px; }
+.roles-lista { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
+.rol-fila { display: flex; align-items: center; gap: 16px; padding: 14px 16px; background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); }
+.rol-datos { flex: 1; min-width: 0; }
+.rol-nombre { display: flex; gap: 8px; align-items: center; font-weight: 600; }
+.rol-meta { font-size: 12px; margin-top: 2px; }
+.rol-fila .acciones { display: flex; gap: 8px; }
+.rol-editor { width: min(100%, 560px); }
+.rol-vista { display: flex; align-items: center; justify-content: center; gap: 16px; padding: 16px; margin-bottom: 12px; background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-sm); }
+.rol-sel { display: flex; flex-wrap: wrap; gap: 6px; }
+.rol-op { display: inline-grid; place-items: center; width: 40px; height: 40px; padding: 0; color: var(--muted); cursor: pointer; background: var(--control); border: 1px solid var(--border); border-radius: var(--radius-sm); }
+.rol-op:hover { background: var(--control-hover); }
+.rol-op.activo { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.rol-op-nada { font-size: 18px; }
+.rol-colores { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.rol-modo { height: 32px; padding: 0 12px; font: inherit; color: var(--text); cursor: pointer; background: var(--control); border: 1px solid var(--border); border-radius: var(--radius-sm); }
+.rol-modo.activo { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.rol-color { width: 44px; height: 32px; padding: 2px; cursor: pointer; background: var(--field); border: 1px solid var(--field-border); border-radius: var(--radius-sm); }
+.rol-color[hidden] { display: none; }
+.roles-asignar { display: flex; flex-wrap: wrap; gap: 8px; }
+.rol-chip { display: inline-flex; align-items: center; gap: 8px; height: 34px; padding: 0 12px; font: inherit; color: var(--text); cursor: pointer; background: var(--control); border: 1px solid var(--border); border-radius: 17px; }
+.rol-chip:hover:not(:disabled) { background: var(--control-hover); }
+.rol-chip.activo { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.rol-chip:disabled { opacity: .55; cursor: not-allowed; }
+.rol-chip-marca { color: var(--accent); font-weight: 700; }
+@media (max-width: 560px) { .rol-fila { flex-wrap: wrap; } }

@@ -66,3 +66,6 @@ En Perfiles → detalle de la cuenta (ícono de información) está «Hacer admi
 
 ## Fundador
 El rol Fundador (sello azul, prioridad 1) se asigna solo a `@yauyo`. Si esa cuenta no existe, en la Consola: `fundador <usuario>` (solo si no hay fundador). Las filas de Perfiles muestran las insignias Fundador / Administrador. Requiere volver a ejecutar `supabase/schema.sql`.
+
+## Roles
+Sección **Roles**: crear, editar y borrar roles con vista previa (forma, símbolo, color sólido o degradado, prioridad y descripción). En **Perfiles → detalle de la cuenta** se dan o quitan roles tocándolos. Todo pide la contraseña maestra y queda en Registros. Fundador solo se asigna desde la Consola. Requiere volver a ejecutar `supabase/schema.sql` de la web principal.
