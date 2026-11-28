@@ -1252,6 +1252,79 @@
   }
 
   /* ---------- Registros ---------- */
+  /* ---------- Selector de color propio (reemplaza al del navegador) ---------- */
+  var PALETA = ["#ef4444", "#f97316", "#f59e0b", "#eab308", "#84cc16", "#22c55e", "#14b8a6", "#06b6d4", "#3b82f6", "#1d8cf8", "#6366f1", "#8b5cf6", "#a259ff", "#d946ef", "#ec4899", "#f43f5e", "#ffffff", "#cbd5e1", "#64748b", "#1e293b", "#000000"];
+  function hexARgb(h) { return [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)]; }
+  function rgbAHsv(r, g, b) {
+    r /= 255; g /= 255; b /= 255;
+    var mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn, h = 0;
+    if (d) h = mx === r ? ((g - b) / d + 6) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4;
+    return [h * 60, mx ? d / mx : 0, mx];
+  }
+  function hsvAHex(h, sa, v) {
+    var f = function (n) { var k = (n + h / 60) % 6; return v - v * sa * Math.max(0, Math.min(k, 4 - k, 1)); };
+    return "#" + [f(5), f(3), f(1)].map(function (x) { var n = Math.round(x * 255).toString(16); return n.length < 2 ? "0" + n : n; }).join("");
+  }
+  // Devuelve un nodo con .valor (#rrggbb), .poner(hex) y .hidden. Llama a alCambiar(hex) al elegir.
+  function selectorColor(inicial, etiqueta, alCambiar) {
+    var hex = inicial, hsv = rgbAHsv.apply(null, hexARgb(hex));
+    var muestra = el("button", { type: "button", class: "cp-muestra", "aria-label": etiqueta, "aria-haspopup": "dialog", "aria-expanded": "false" },
+      el("span", { class: "cp-color" }), el("span", { class: "cp-hex-txt mono" }));
+    var area = el("div", { class: "cp-area", tabindex: "0", role: "slider", "aria-label": "Saturación y brillo" }, el("span", { class: "cp-punto" }));
+    var tono = el("input", { type: "range", class: "cp-tono", min: "0", max: "360", step: "1", "aria-label": "Tono" });
+    var campo = el("input", { class: "f-input cp-hex", maxlength: "7", spellcheck: "false", autocomplete: "off", "aria-label": "Código del color" });
+    var paleta = el("div", { class: "cp-paleta" });
+    var pop = el("div", { class: "cp-pop", role: "dialog", "aria-label": etiqueta, hidden: true }, area, tono, el("div", { class: "cp-fila" }, campo), paleta);
+    var raiz = el("span", { class: "cp" }, muestra, pop);
+    function pintar(sinCampo) {
+      hex = hsvAHex(hsv[0], hsv[1], hsv[2]);
+      raiz.style.setProperty("--cp", hex);
+      area.style.setProperty("--tono", "hsl(" + Math.round(hsv[0]) + ",100%,50%)");
+      area.firstChild.style.left = (hsv[1] * 100) + "%"; area.firstChild.style.top = ((1 - hsv[2]) * 100) + "%";
+      tono.value = Math.round(hsv[0]);
+      muestra.querySelector(".cp-hex-txt").textContent = hex.toUpperCase();
+      if (!sinCampo) campo.value = hex;
+      raiz.valor = hex;
+    }
+    function elegir(h, aviso) { hsv = rgbAHsv.apply(null, hexARgb(h)); pintar(); if (aviso !== false && alCambiar) alCambiar(hex); }
+    PALETA.forEach(function (c) {
+      var b = el("button", { type: "button", class: "cp-p", "aria-label": c, title: c }); b.style.background = c;   // por CSSOM: el CSP no permite style="" en el HTML
+      b.addEventListener("click", function () { elegir(c); });
+      paleta.appendChild(b);
+    });
+    function arrastre(e) {
+      var r = area.getBoundingClientRect();
+      hsv[1] = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
+      hsv[2] = 1 - Math.min(1, Math.max(0, (e.clientY - r.top) / r.height));
+      pintar(); if (alCambiar) alCambiar(hex);
+    }
+    area.addEventListener("pointerdown", function (e) { area.setPointerCapture(e.pointerId); arrastre(e); area.onpointermove = arrastre; });
+    area.addEventListener("pointerup", function () { area.onpointermove = null; });
+    area.addEventListener("keydown", function (e) {
+      var d = { ArrowLeft: [-.03, 0], ArrowRight: [.03, 0], ArrowUp: [0, .03], ArrowDown: [0, -.03] }[e.key];
+      if (!d) return; e.preventDefault();
+      hsv[1] = Math.min(1, Math.max(0, hsv[1] + d[0])); hsv[2] = Math.min(1, Math.max(0, hsv[2] + d[1]));
+      pintar(); if (alCambiar) alCambiar(hex);
+    });
+    tono.addEventListener("input", function () { hsv[0] = +tono.value; if (!hsv[1]) hsv[1] = 1; if (!hsv[2]) hsv[2] = 1; pintar(); if (alCambiar) alCambiar(hex); });
+    campo.addEventListener("input", function () {
+      var v = campo.value.trim(); if (v[0] !== "#") v = "#" + v;
+      if (/^#[0-9a-fA-F]{6}$/.test(v)) { hsv = rgbAHsv.apply(null, hexARgb(v)); pintar(true); if (alCambiar) alCambiar(hex); campo.classList.remove("malo"); }
+      else campo.classList.add("malo");
+    });
+    function abrir(si) {
+      pop.hidden = !si; muestra.setAttribute("aria-expanded", String(si));
+      if (si) { document.addEventListener("pointerdown", fuera, true); document.addEventListener("keydown", tecla, true); campo.value = hex; }
+      else { document.removeEventListener("pointerdown", fuera, true); document.removeEventListener("keydown", tecla, true); }
+    }
+    function fuera(e) { if (!raiz.contains(e.target)) abrir(false); }
+    function tecla(e) { if (e.key === "Escape") { e.stopPropagation(); abrir(false); muestra.focus(); } }
+    muestra.addEventListener("click", function () { abrir(pop.hidden); });
+    raiz.poner = function (h) { elegir(h); };
+    pintar();
+    return raiz;
+  }
+
   /* ---------- Roles ---------- */
   function abrirEditorRol(rol, alGuardar) {
     var RI = window.RolIcono, previo = document.activeElement;
@@ -1290,8 +1363,8 @@
       });
       return el("div", { class: "f-group" }, el("span", { class: "f-label" }, titulo), grupo);
     }
-    var c1 = el("input", { type: "color", class: "rol-color", value: est.c1, "aria-label": "Color" });
-    var c2 = el("input", { type: "color", class: "rol-color", value: est.c2 || "#6c2fe6", "aria-label": "Segundo color" });
+    var c1 = selectorColor(est.c1, "Color", function (h) { est.c1 = h; pintarVista(); });
+    var c2 = selectorColor(est.c2 || "#6c2fe6", "Segundo color", function (h) { est.c2 = h; pintarVista(); });
     var modoS = el("button", { type: "button", class: "rol-modo" + (degradado ? "" : " activo"), role: "radio", "aria-checked": String(!degradado) }, "Color sólido");
     var modoD = el("button", { type: "button", class: "rol-modo" + (degradado ? " activo" : ""), role: "radio", "aria-checked": String(degradado) }, "Degradado");
     function modo(d) {
@@ -1301,11 +1374,8 @@
       c2.hidden = !d; pintarVista();
     }
     modoS.addEventListener("click", function () { modo(false); }); modoD.addEventListener("click", function () { modo(true); });
-    c1.addEventListener("input", function () { est.c1 = c1.value; pintarVista(); });
-    c2.addEventListener("input", function () { est.c2 = c2.value; pintarVista(); });
     c2.hidden = !degradado;
-    var cs = el("input", { type: "color", class: "rol-color", value: est.cs, "aria-label": "Color del símbolo" });
-    cs.addEventListener("input", function () { est.cs = cs.value; pintarVista(); });
+    var cs = selectorColor(est.cs, "Color del símbolo", function (h) { est.cs = h; pintarVista(); });
     var error = el("p", { class: "f-error", role: "alert" });
     var guardar = el("button", { type: "submit", class: "btn" }, rol ? "Guardar cambios" : "Crear rol");
     var cancelar = el("button", { type: "button", class: "btn secondary" }, "Cancelar");
@@ -1317,11 +1387,11 @@
       el("div", { class: "f-group" }, el("span", { class: "f-label" }, "Color"),
         el("div", { class: "rol-colores" }, modoS, modoD, c1, c2)),
       el("div", { class: "f-group" }, el("span", { class: "f-label" }, "Color del símbolo (dentro de la forma)"),
-        el("div", { class: "rol-colores" }, cs, el("button", { type: "button", class: "btn secondary pequeno", onclick: function () { est.cs = "#ffffff"; cs.value = "#ffffff"; pintarVista(); } }, "Blanco"))),
+        el("div", { class: "rol-colores" }, cs, el("button", { type: "button", class: "btn secondary pequeno", onclick: function () { cs.poner("#ffffff"); } }, "Blanco"))),
       error, el("div", { class: "maestra-botones" }, cancelar, guardar));
     var fondo = el("div", { class: "modal-fondo" }, el("div", { class: "modal rol-editor", role: "dialog", "aria-modal": "true", "aria-label": rol ? "Editar rol" : "Crear rol" }, form));
     function cerrar() { document.removeEventListener("keydown", tecla, true); fondo.remove(); if (previo && previo.focus) previo.focus(); }
-    function tecla(e) { if (e.key === "Escape" && !document.querySelector(".maestra-fondo")) { e.stopPropagation(); cerrar(); } }
+    function tecla(e) { if (e.key === "Escape" && !document.querySelector(".maestra-fondo") && !document.querySelector(".cp-pop:not([hidden])")) { e.stopPropagation(); cerrar(); } }
     document.addEventListener("keydown", tecla, true);
     cancelar.addEventListener("click", cerrar);
     fondo.addEventListener("pointerdown", function (e) { if (e.target === fondo) cerrar(); });
