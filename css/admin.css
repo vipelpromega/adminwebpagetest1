@@ -203,12 +203,17 @@ table.tabla { width: 100%; border-collapse: collapse; }
 }
 .modal-cab { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
 .modal-cab h2 { overflow-wrap: anywhere; font-size: 18px; }
-.datos { display: flex; flex-direction: column; margin: 0; }
-.dato { display: grid; grid-template-columns: 150px 1fr; gap: 12px; align-items: center; padding: 9px 0; border-bottom: 1px solid var(--border); }
-.dato dt { color: var(--muted); }
+/* «Más información»: ancho, en columnas, para ocupar poco alto */
+.modal.detalle { width: min(100%, 940px); padding: 18px 22px; }
+.modal.detalle .modal-cab { margin-bottom: 8px; }
+.modal-cuerpo { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 32px; align-items: start; }
+.modal-cuerpo > .datos, .modal-cuerpo > .f-error, .modal-cuerpo > .cargando, .modal-cuerpo > .roles-sec { grid-column: 1 / -1; }
+.datos { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); column-gap: 24px; margin: 0; }
+.dato { display: flex; flex-direction: column; gap: 3px; padding: 8px 0; border-bottom: 1px solid var(--border); min-width: 0; }
+.dato dt { color: var(--muted); font-size: 12px; }
 .dato dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
 .dato .celda-clave { white-space: normal; }
-.reset, .suspender { margin-top: 16px; padding-top: 4px; }
+.reset, .suspender { margin-top: 12px; padding-top: 2px; }
 .reset h3, .suspender h3 { margin-bottom: 8px; font-size: 14px; }
 .f-ok { margin: 4px 0; color: var(--ok); }
 .f-ok:empty { display: none; }
@@ -216,8 +221,9 @@ table.tabla { width: 100%; border-collapse: collapse; }
   display: inline-grid; place-items: center; width: 56px; height: 56px; overflow: hidden; border-radius: 50%;
   background: var(--accent); color: var(--on-accent); font-family: var(--font-display); font-size: 24px; font-weight: 600;
 }
+.modal.detalle .avatar-adm { width: 40px; height: 40px; font-size: 16px; }
 .avatar-adm img { width: 100%; height: 100%; object-fit: cover; display: block; }
-@media (max-width: 480px) { .dato { grid-template-columns: 1fr; gap: 2px; } }
+@media (max-width: 720px) { .modal-cuerpo { grid-template-columns: 1fr; } }
 
 /* Perfiles: columna de acciones compacta */
 .tabla td.acciones { width: 1%; white-space: nowrap; }
@@ -374,7 +380,7 @@ table.tabla { width: 100%; border-collapse: collapse; }
 .cp-muestra { display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 10px 0 5px; font: inherit; font-size: 12px; color: var(--text); cursor: pointer; background: var(--control); border: 1px solid var(--border); border-radius: var(--radius-sm); }
 .cp-muestra:hover { background: var(--control-hover); }
 .cp-color { width: 22px; height: 22px; border-radius: 5px; background: var(--cp); box-shadow: inset 0 0 0 1px rgba(128,128,128,.45); }
-.cp-pop { position: absolute; z-index: 30; left: 0; top: calc(100% + 6px); width: 236px; padding: 12px; display: flex; flex-direction: column; gap: 10px; background: var(--flyout); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-dialog); animation: m-escala .15s var(--ease-out) both; }
+.cp-pop { position: fixed; z-index: 2000; width: 236px; padding: 12px; display: flex; flex-direction: column; gap: 10px; background: var(--flyout); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-dialog); animation: m-escala .15s var(--ease-out) both; }
 .cp-pop[hidden] { display: none; }
 .cp-area { position: relative; height: 120px; border-radius: 8px; cursor: crosshair; touch-action: none; background: linear-gradient(to top, #000, transparent), linear-gradient(to right, #fff, var(--tono, #f00)); }
 .cp-area:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
@@ -388,3 +394,19 @@ table.tabla { width: 100%; border-collapse: collapse; }
 .cp-paleta { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
 .cp-p { aspect-ratio: 1; padding: 0; cursor: pointer; border: 1px solid rgba(128,128,128,.5); border-radius: 6px; }
 .cp-p:hover { transform: scale(1.12); }
+
+/* Botones solo con icono: el texto sale como tooltip */
+.btn-ico { display: inline-grid; place-items: center; }
+.btn-ico > svg { display: block; width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.btn.btn-i { position: relative; width: 40px; min-width: 40px; height: 36px; padding: 0; justify-content: center; }
+.btn.btn-i.pequeno { width: 34px; min-width: 34px; height: 30px; min-height: 30px; }
+.btn.btn-i .btn-txt { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.btn.btn-i[data-tooltip]::after {
+  content: attr(data-tooltip); position: absolute; left: 50%; bottom: calc(100% + 8px); transform: translate(-50%, 4px);
+  padding: 5px 9px; border-radius: 6px; font-size: 12px; font-weight: 400; line-height: 1.3; white-space: nowrap; pointer-events: none;
+  background: var(--flyout); color: var(--text); border: 1px solid var(--border); box-shadow: var(--shadow-flyout, 0 4px 14px rgba(0,0,0,.25));
+  opacity: 0; transition: opacity .15s ease, transform .15s var(--ease-out, ease); z-index: 20;
+}
+.btn.btn-i[data-tooltip]:hover::after, .btn.btn-i[data-tooltip]:focus-visible::after { opacity: 1; transform: translate(-50%, 0); transition-delay: .25s; }
+.modal-cuerpo .reset form { display: flex; flex-direction: column; align-items: flex-start; }
+.modal-cuerpo .reset form .f-box { align-self: stretch; }

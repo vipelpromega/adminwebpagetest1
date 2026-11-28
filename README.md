@@ -69,3 +69,6 @@ El rol Fundador (sello azul, prioridad 1) se asigna solo a `@yauyo`. Si esa cuen
 
 ## Roles
 Sección **Roles**: crear, editar y borrar roles con vista previa (forma, símbolo, color sólido o degradado, prioridad y descripción). En **Perfiles → detalle de la cuenta** se dan o quitan roles tocándolos. Todo pide la contraseña maestra y queda en Registros. Fundador solo se asigna desde la Consola. Requiere volver a ejecutar `supabase/schema.sql` de la web principal.
+
+## Prototipo de interfaz
+Fuente Nunito (carpeta `fonts/`), animaciones de entrada/salida de tarjetas y cambio de página, selector de color propio (`js/selector-color.js`) y botones largos como iconos con tooltip. Para volver al estado anterior: rama `antes-prototipo`.

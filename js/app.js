@@ -150,6 +150,44 @@
     return { grupo: grupo, input: input };
   }
 
+  // Botones con texto largo → solo icono (el texto queda como tooltip y para lectores de pantalla)
+  var ICO_BTN = {
+    mas: '<path d="M12 5v14M5 12h14"/>', check: '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
+    refresh: '<path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 4v5h-5"/>',
+    seleccionar: '<rect x="3" y="4" width="5" height="5" rx="1"/><rect x="3" y="14" width="5" height="5" rx="1"/><path d="M12 6.5h9M12 16.5h9"/>',
+    todo: '<path d="M3 7l2.5 2.5L10 5"/><path d="M3 16l2.5 2.5L10 14"/><path d="M14 7h7M14 16h7"/>',
+    borrar: '<path d="M4 7h16M10 11v6M14 11v6"/><path d="M6 7l1 13h10l1-13"/><path d="M9 7V4h6v3"/>',
+    mas_filas: '<path d="M6 9l6 6 6-6"/>',
+    desbloquear: '<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 7.5-1.9"/>',
+    clave: '<circle cx="8" cy="15" r="4"/><path d="M11 12l9-9"/><path d="M16 7l3 3"/>',
+    suspender: '<circle cx="12" cy="12" r="9"/><path d="M5.6 5.6l12.8 12.8"/>',
+    reactivar: '<circle cx="12" cy="12" r="9"/><path d="M8 12.5l3 3 5-6"/>'
+  };
+  function iconizar(b, ic, tip) {
+    tip = tip || b.textContent;
+    b.classList.add("btn-i"); b.setAttribute("data-tooltip", tip); b.setAttribute("aria-label", tip);
+    b.textContent = "";
+    var svg = document.createElementNS("http://www.w3.org/2000/svg", "svg"); svg.setAttribute("viewBox", "0 0 24 24"); svg.innerHTML = ICO_BTN[ic];
+    var i = el("span", { class: "btn-ico", "aria-hidden": "true" }); i.appendChild(svg);
+    b.appendChild(i); b.appendChild(el("span", { class: "btn-txt" }, tip));
+    return b;
+  }
+  function rotular(b, tip) {
+    if (!b.classList.contains("btn-i")) { b.textContent = tip; return; }
+    b.setAttribute("data-tooltip", tip); b.setAttribute("aria-label", tip); b.querySelector(".btn-txt").textContent = tip;
+  }
+
+  // Cierra una ventana flotante con animación de salida (y la quita del DOM al terminar)
+  function quitarAnimado(fondo) {
+    if (!fondo || !fondo.isConnected || fondo.classList.contains("saliendo")) return;
+    fondo.classList.add("saliendo");
+    var fin = function () { fondo.remove(); };
+    if (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) { fin(); return; }
+    fondo.addEventListener("animationend", function (e) { if (e.target === fondo) fin(); });
+    setTimeout(fin, 400);
+  }
+  function viva(fondo) { return !!fondo && fondo.isConnected && !fondo.classList.contains("saliendo"); }
+
   function pantallaCargando() {
     pantalla(el("h1", { class: "gate-prompt" }, "Panel de administración"), el("p", { class: "muted" }, "Cargando…"));
   }
@@ -667,7 +705,7 @@
   function vistaAutenticacion(c, g) {
     var nombre = campoTexto({ id: "nombre", etiqueta: "Nombre de identificación:", max: 80, ayuda: "Por ejemplo: YAUYO RAMOS FABIANO LEANDRO" });
     var error = el("p", { class: "f-error", role: "alert" });
-    var boton = el("button", { type: "submit", class: "btn" }, "Crear clave");
+    var boton = iconizar(el("button", { type: "submit", class: "btn" }, "Crear clave"), "mas");
     var resultado = el("div", { class: "vista" });
     var pasosCaja = el("div");
     var vistaPrevia = null;      // prefijo calculado en esta página
@@ -780,13 +818,13 @@
     var cuerpo = el("div", { class: "modal-cuerpo" }, el("p", { class: "muted cargando" }, "Cargando…"));
     var cerrarBtn = el("button", { type: "button", class: "btn secondary pequeno", "aria-label": "Cerrar" }, "Cerrar");
     var fondo = el("div", { class: "modal-fondo" },
-      el("div", { class: "modal", role: "dialog", "aria-modal": "true", "aria-label": "Más información de " + k.etiqueta },
+      el("div", { class: "modal detalle", role: "dialog", "aria-modal": "true", "aria-label": "Más información de " + k.etiqueta },
         el("div", { class: "modal-cab" }, el("h2", {}, k.etiqueta), cerrarBtn), cuerpo));
     var timer = null;
     function cerrar() {
       clearTimeout(timer);
       document.removeEventListener("keydown", tecla, true);
-      fondo.remove();
+      quitarAnimado(fondo);
       if (previo && previo.focus) previo.focus();
     }
     function tecla(e) { if (e.key === "Escape") { e.stopPropagation(); cerrar(); } }
@@ -798,7 +836,7 @@
     cerrarBtn.focus();
 
     api("admin_detalle_clave", { p_id: k.id }).then(function (d) {
-      if (!document.body.contains(fondo)) return;
+      if (!viva(fondo)) return;
       vaciar(cuerpo);
       if (!d.ok) { cuerpo.appendChild(el("p", { class: "f-error", role: "alert" }, msg(d))); return; }
 
@@ -846,12 +884,12 @@
       // Roles de la cuenta: tocar un rol lo da o lo quita (pide la contraseña maestra)
       if (d.cuenta) {
         var zona = el("div", { class: "roles-asignar" }, el("p", { class: "muted cargando" }, "Cargando roles…"));
-        cuerpo.appendChild(el("section", { class: "suspender" }, el("h3", {}, "Roles de la cuenta"),
+        cuerpo.appendChild(el("section", { class: "suspender roles-sec" }, el("h3", {}, "Roles de la cuenta"),
           el("p", { class: "muted" }, "Toca un rol para dárselo o quitárselo. Junto al nombre se muestra el de prioridad más baja."), zona));
         var tiene = {};
         (d.cuenta.roles || []).forEach(function (r) { tiene[r.id] = true; });
         api("admin_listar_roles").then(function (lr) {
-          if (!document.body.contains(fondo)) return;
+          if (!viva(fondo)) return;
           vaciar(zona);
           if (!lr.ok) { zona.appendChild(el("p", { class: "f-error", role: "alert" }, msg(lr))); return; }
           var err = el("p", { class: "f-error", role: "alert" });
@@ -867,7 +905,7 @@
                 boton: dar ? "Dar rol" : "Quitar rol", peligro: !dar,
                 ejecutar: function (m) { return api("admin_asignar_rol", { p_id: k.id, p_rol: r.id, p_valor: dar, p_maestra: m }); }
               }).then(function (res) {
-                if (!res || !document.body.contains(fondo)) return;
+                if (!res || !viva(fondo)) return;
                 if (alCambiar) alCambiar();
                 cerrar();
                 abrirDetalle(k, disparador, alCambiar);
@@ -882,7 +920,7 @@
       // Suspender / reactivar la cuenta
       if (d.cuenta) {
         var susp = !!d.cuenta.suspendida;
-        var sBtn = el("button", { type: "button", class: susp ? "btn" : "btn danger" }, susp ? "Reactivar cuenta" : "Suspender cuenta");
+        var sBtn = iconizar(el("button", { type: "button", class: susp ? "btn" : "btn danger" }, susp ? "Reactivar cuenta" : "Suspender cuenta"), susp ? "reactivar" : "suspender");
         sBtn.addEventListener("click", function () {
           pedirMaestra({
             titulo: susp ? "Reactivar cuenta" : "Suspender cuenta",
@@ -891,7 +929,7 @@
             boton: susp ? "Reactivar" : "Suspender", peligro: !susp,
             ejecutar: function (m) { return api("admin_suspender_cuenta", { p_id: k.id, p_suspender: !susp, p_maestra: m }); }
           }).then(function (r) {
-            if (!r || !document.body.contains(fondo)) return;
+            if (!r || !viva(fondo)) return;
             if (alCambiar) alCambiar();
             cerrar();
             abrirDetalle(k, disparador, alCambiar);
@@ -912,7 +950,7 @@
         var nueva = campoTexto({ id: "nueva", etiqueta: "Nueva contraseña para la cuenta:", tipo: "password", max: 72, autocomplete: "new-password", ayuda: "Entre 8 y 72 caracteres." });
         var error = el("p", { class: "f-error", role: "alert" });
         var ok = el("p", { class: "f-ok", role: "status" });
-        var boton = el("button", { type: "submit", class: "btn" }, "Restablecer contraseña");
+        var boton = iconizar(el("button", { type: "submit", class: "btn" }, "Restablecer contraseña"), "clave");
         sec.appendChild(el("form", { novalidate: true, autocomplete: "off", onsubmit: function (e) {
           e.preventDefault(); error.textContent = ""; ok.textContent = "";
           if (nueva.input.value.length < 8) { error.textContent = msg({ error: "clave_formato" }); return; }
@@ -955,7 +993,7 @@
       function cerrar(resultado) {
         window.removeEventListener("keydown", tecla, true);
         campo.value = "";
-        fondo.remove();
+        quitarAnimado(fondo);
         if (abridor && abridor.focus && document.body.contains(abridor)) abridor.focus();
         resolver(resultado);
       }
@@ -1021,14 +1059,14 @@
     var buscar = campoTexto({ id: "buscar-reg", max: 60 });
     buscar.input.setAttribute("placeholder", "Buscar por perfil, acción o país"); buscar.input.setAttribute("aria-label", "Buscar");
     var cuenta = el("span", { class: "muted" }, "");
-    var btnAct = el("button", { type: "button", class: "btn secondary pequeno" }, "Actualizar");
-    var btnSel = el("button", { type: "button", class: "btn secondary pequeno" }, "Seleccionar");
-    var btnTodos = el("button", { type: "button", class: "btn secondary pequeno" }, "Seleccionar todo");
-    var btnBorrarSel = el("button", { type: "button", class: "btn danger pequeno" }, "Borrar seleccionados");
-    var btnBorrarTodos = el("button", { type: "button", class: "btn danger pequeno" }, "Borrar todos");
+    var btnAct = iconizar(el("button", { type: "button", class: "btn secondary pequeno" }, "Actualizar"), "refresh");
+    var btnSel = iconizar(el("button", { type: "button", class: "btn secondary pequeno" }, "Seleccionar"), "seleccionar");
+    var btnTodos = iconizar(el("button", { type: "button", class: "btn secondary pequeno" }, "Seleccionar todo"), "todo");
+    var btnBorrarSel = iconizar(el("button", { type: "button", class: "btn danger pequeno" }, "Borrar seleccionados"), "borrar");
+    var btnBorrarTodos = iconizar(el("button", { type: "button", class: "btn danger pequeno" }, "Borrar todos"), "borrar");
     var aviso = el("p", { class: "f-error", role: "alert" });
     var cuerpo = el("tbody"), vacio = el("div", { class: "vacio" }, "Cargando…");
-    var masBtn = el("button", { type: "button", class: "btn secondary pequeno" }, "Cargar más");
+    var masBtn = iconizar(el("button", { type: "button", class: "btn secondary pequeno" }, "Cargar más"), "mas_filas");
     var cabecera = el("tr");
     var thEl = el("div", { class: "tabla-envoltorio" }, el("table", { class: "tabla tabla-registros" }, el("thead", {}, cabecera), cuerpo), vacio);
 
@@ -1076,9 +1114,9 @@
       vacio.textContent = filas.length ? "Ningún registro coincide con la búsqueda." : "Todavía no hay registros de perfiles.";
       vacio.hidden = v.length > 0;
       cuenta.textContent = total + (total === 1 ? " registro" : " registros") + (seleccionando ? " · " + nMarcados() + " marcados" : "");
-      btnSel.textContent = seleccionando ? "Cancelar selección" : "Seleccionar";
+      rotular(btnSel, seleccionando ? "Cancelar selección" : "Seleccionar");
       btnTodos.hidden = !seleccionando; btnBorrarSel.hidden = !seleccionando;
-      btnBorrarSel.textContent = "Borrar seleccionados (" + nMarcados() + ")";
+      rotular(btnBorrarSel, "Borrar seleccionados (" + nMarcados() + ")");
       btnBorrarSel.disabled = nMarcados() === 0;
       btnBorrarTodos.disabled = total === 0;
       masBtn.hidden = !hayMas;
@@ -1136,7 +1174,7 @@
       el("option", { value: "" }, "Todas"), el("option", { value: "sin_usar" }, "Sin usar"),
       el("option", { value: "usada" }, "Usadas"), el("option", { value: "suspendida" }, "Suspendidas"));
     var cuenta = el("span", { class: "muted" }, "");
-    var actualizarBtn = el("button", { type: "button", class: "btn secondary pequeno" }, "Actualizar");
+    var actualizarBtn = iconizar(el("button", { type: "button", class: "btn secondary pequeno" }, "Actualizar"), "refresh");
     var aviso = el("p", { class: "f-error", role: "alert" });
     var cuerpo = el("tbody");
     var vacio = el("div", { class: "vacio" }, "Cargando…");
@@ -1252,78 +1290,8 @@
   }
 
   /* ---------- Registros ---------- */
-  /* ---------- Selector de color propio (reemplaza al del navegador) ---------- */
-  var PALETA = ["#ef4444", "#f97316", "#f59e0b", "#eab308", "#84cc16", "#22c55e", "#14b8a6", "#06b6d4", "#3b82f6", "#1d8cf8", "#6366f1", "#8b5cf6", "#a259ff", "#d946ef", "#ec4899", "#f43f5e", "#ffffff", "#cbd5e1", "#64748b", "#1e293b", "#000000"];
-  function hexARgb(h) { return [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)]; }
-  function rgbAHsv(r, g, b) {
-    r /= 255; g /= 255; b /= 255;
-    var mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn, h = 0;
-    if (d) h = mx === r ? ((g - b) / d + 6) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4;
-    return [h * 60, mx ? d / mx : 0, mx];
-  }
-  function hsvAHex(h, sa, v) {
-    var f = function (n) { var k = (n + h / 60) % 6; return v - v * sa * Math.max(0, Math.min(k, 4 - k, 1)); };
-    return "#" + [f(5), f(3), f(1)].map(function (x) { var n = Math.round(x * 255).toString(16); return n.length < 2 ? "0" + n : n; }).join("");
-  }
-  // Devuelve un nodo con .valor (#rrggbb), .poner(hex) y .hidden. Llama a alCambiar(hex) al elegir.
-  function selectorColor(inicial, etiqueta, alCambiar) {
-    var hex = inicial, hsv = rgbAHsv.apply(null, hexARgb(hex));
-    var muestra = el("button", { type: "button", class: "cp-muestra", "aria-label": etiqueta, "aria-haspopup": "dialog", "aria-expanded": "false" },
-      el("span", { class: "cp-color" }), el("span", { class: "cp-hex-txt mono" }));
-    var area = el("div", { class: "cp-area", tabindex: "0", role: "slider", "aria-label": "Saturación y brillo" }, el("span", { class: "cp-punto" }));
-    var tono = el("input", { type: "range", class: "cp-tono", min: "0", max: "360", step: "1", "aria-label": "Tono" });
-    var campo = el("input", { class: "f-input cp-hex", maxlength: "7", spellcheck: "false", autocomplete: "off", "aria-label": "Código del color" });
-    var paleta = el("div", { class: "cp-paleta" });
-    var pop = el("div", { class: "cp-pop", role: "dialog", "aria-label": etiqueta, hidden: true }, area, tono, el("div", { class: "cp-fila" }, campo), paleta);
-    var raiz = el("span", { class: "cp" }, muestra, pop);
-    function pintar(sinCampo) {
-      hex = hsvAHex(hsv[0], hsv[1], hsv[2]);
-      raiz.style.setProperty("--cp", hex);
-      area.style.setProperty("--tono", "hsl(" + Math.round(hsv[0]) + ",100%,50%)");
-      area.firstChild.style.left = (hsv[1] * 100) + "%"; area.firstChild.style.top = ((1 - hsv[2]) * 100) + "%";
-      tono.value = Math.round(hsv[0]);
-      muestra.querySelector(".cp-hex-txt").textContent = hex.toUpperCase();
-      if (!sinCampo) campo.value = hex;
-      raiz.valor = hex;
-    }
-    function elegir(h, aviso) { hsv = rgbAHsv.apply(null, hexARgb(h)); pintar(); if (aviso !== false && alCambiar) alCambiar(hex); }
-    PALETA.forEach(function (c) {
-      var b = el("button", { type: "button", class: "cp-p", "aria-label": c, title: c }); b.style.background = c;   // por CSSOM: el CSP no permite style="" en el HTML
-      b.addEventListener("click", function () { elegir(c); });
-      paleta.appendChild(b);
-    });
-    function arrastre(e) {
-      var r = area.getBoundingClientRect();
-      hsv[1] = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
-      hsv[2] = 1 - Math.min(1, Math.max(0, (e.clientY - r.top) / r.height));
-      pintar(); if (alCambiar) alCambiar(hex);
-    }
-    area.addEventListener("pointerdown", function (e) { area.setPointerCapture(e.pointerId); arrastre(e); area.onpointermove = arrastre; });
-    area.addEventListener("pointerup", function () { area.onpointermove = null; });
-    area.addEventListener("keydown", function (e) {
-      var d = { ArrowLeft: [-.03, 0], ArrowRight: [.03, 0], ArrowUp: [0, .03], ArrowDown: [0, -.03] }[e.key];
-      if (!d) return; e.preventDefault();
-      hsv[1] = Math.min(1, Math.max(0, hsv[1] + d[0])); hsv[2] = Math.min(1, Math.max(0, hsv[2] + d[1]));
-      pintar(); if (alCambiar) alCambiar(hex);
-    });
-    tono.addEventListener("input", function () { hsv[0] = +tono.value; if (!hsv[1]) hsv[1] = 1; if (!hsv[2]) hsv[2] = 1; pintar(); if (alCambiar) alCambiar(hex); });
-    campo.addEventListener("input", function () {
-      var v = campo.value.trim(); if (v[0] !== "#") v = "#" + v;
-      if (/^#[0-9a-fA-F]{6}$/.test(v)) { hsv = rgbAHsv.apply(null, hexARgb(v)); pintar(true); if (alCambiar) alCambiar(hex); campo.classList.remove("malo"); }
-      else campo.classList.add("malo");
-    });
-    function abrir(si) {
-      pop.hidden = !si; muestra.setAttribute("aria-expanded", String(si));
-      if (si) { document.addEventListener("pointerdown", fuera, true); document.addEventListener("keydown", tecla, true); campo.value = hex; }
-      else { document.removeEventListener("pointerdown", fuera, true); document.removeEventListener("keydown", tecla, true); }
-    }
-    function fuera(e) { if (!raiz.contains(e.target)) abrir(false); }
-    function tecla(e) { if (e.key === "Escape") { e.stopPropagation(); abrir(false); muestra.focus(); } }
-    muestra.addEventListener("click", function () { abrir(pop.hidden); });
-    raiz.poner = function (h) { elegir(h); };
-    pintar();
-    return raiz;
-  }
+  // Selector de color propio: js/selector-color.js
+  function selectorColor(inicial, etiqueta, alCambiar) { return window.SelectorColor.crear(inicial, etiqueta, alCambiar); }
 
   /* ---------- Roles ---------- */
   function abrirEditorRol(rol, alGuardar) {
@@ -1377,7 +1345,7 @@
     c2.hidden = !degradado;
     var cs = selectorColor(est.cs, "Color del símbolo", function (h) { est.cs = h; pintarVista(); });
     var error = el("p", { class: "f-error", role: "alert" });
-    var guardar = el("button", { type: "submit", class: "btn" }, rol ? "Guardar cambios" : "Crear rol");
+    var guardar = iconizar(el("button", { type: "submit", class: "btn" }, rol ? "Guardar cambios" : "Crear rol"), "check");
     var cancelar = el("button", { type: "button", class: "btn secondary" }, "Cancelar");
     var form = el("form", { novalidate: true, autocomplete: "off" },
       el("div", { class: "modal-cab" }, el("h2", {}, rol ? "Editar rol" : "Crear rol")),
@@ -1390,7 +1358,7 @@
         el("div", { class: "rol-colores" }, cs, el("button", { type: "button", class: "btn secondary pequeno", onclick: function () { cs.poner("#ffffff"); } }, "Blanco"))),
       error, el("div", { class: "maestra-botones" }, cancelar, guardar));
     var fondo = el("div", { class: "modal-fondo" }, el("div", { class: "modal rol-editor", role: "dialog", "aria-modal": "true", "aria-label": rol ? "Editar rol" : "Crear rol" }, form));
-    function cerrar() { document.removeEventListener("keydown", tecla, true); fondo.remove(); if (previo && previo.focus) previo.focus(); }
+    function cerrar() { document.removeEventListener("keydown", tecla, true); quitarAnimado(fondo); if (previo && previo.focus) previo.focus(); }
     function tecla(e) { if (e.key === "Escape" && !document.querySelector(".maestra-fondo") && !document.querySelector(".cp-pop:not([hidden])")) { e.stopPropagation(); cerrar(); } }
     document.addEventListener("keydown", tecla, true);
     cancelar.addEventListener("click", cerrar);
@@ -1418,7 +1386,7 @@
 
   function vistaRoles(c, g) {
     var lista = el("div", { class: "roles-lista" }, el("p", { class: "muted" }, "Cargando…"));
-    var crear = el("button", { type: "button", class: "btn" }, "Crear rol");
+    var crear = iconizar(el("button", { type: "button", class: "btn" }, "Crear rol"), "mas");
     var aviso = el("p", { class: "f-error", role: "alert" });
     c.appendChild(el("div", { class: "vista" },
       el("div", { class: "barra-herramientas" }, crear, el("span", { class: "muted" }, "Los roles del sistema (Fundador y Administrador) se pueden editar pero no borrar.")),
@@ -1481,11 +1449,11 @@
     var filtro = el("select", { class: "f-select", "aria-label": "Filtrar por acción" }, el("option", { value: "" }, "Todas las acciones"),
       Object.keys(ACCIONES).map(function (k) { return el("option", { value: k }, ACCIONES[k]); }));
     var cuenta = el("span", { class: "muted" }, "");
-    var refrescar = el("button", { type: "button", class: "btn secondary pequeno" }, "Actualizar");
-    var btnSel = el("button", { type: "button", class: "btn secondary pequeno" }, "Seleccionar");
-    var btnTodos = el("button", { type: "button", class: "btn secondary pequeno" }, "Seleccionar todo");
-    var btnBorrarSel = el("button", { type: "button", class: "btn danger pequeno" }, "Borrar seleccionados");
-    var btnBorrarTodos = el("button", { type: "button", class: "btn danger pequeno" }, "Borrar todos");
+    var refrescar = iconizar(el("button", { type: "button", class: "btn secondary pequeno" }, "Actualizar"), "refresh");
+    var btnSel = iconizar(el("button", { type: "button", class: "btn secondary pequeno" }, "Seleccionar"), "seleccionar");
+    var btnTodos = iconizar(el("button", { type: "button", class: "btn secondary pequeno" }, "Seleccionar todo"), "todo");
+    var btnBorrarSel = iconizar(el("button", { type: "button", class: "btn danger pequeno" }, "Borrar seleccionados"), "borrar");
+    var btnBorrarTodos = iconizar(el("button", { type: "button", class: "btn danger pequeno" }, "Borrar todos"), "borrar");
     var aviso = el("p", { class: "f-error", role: "alert" });
         var cabecera = el("tr");
     var cuerpo = el("tbody");
@@ -1528,9 +1496,9 @@
       vacio.hidden = v.length > 0;
       vacio.classList.remove("cargando");
       vacio.textContent = datos.length ? "Nada con ese filtro." : "Todavía no hay registros.";
-      btnSel.textContent = seleccionando ? "Cancelar selección" : "Seleccionar";
+      rotular(btnSel, seleccionando ? "Cancelar selección" : "Seleccionar");
       btnTodos.hidden = !seleccionando; btnBorrarSel.hidden = !seleccionando;
-      btnBorrarSel.textContent = "Borrar seleccionados (" + nMarcados() + ")";
+      rotular(btnBorrarSel, "Borrar seleccionados (" + nMarcados() + ")");
       btnBorrarSel.disabled = nMarcados() === 0;
       btnBorrarTodos.disabled = datos.length === 0;
     }
@@ -1773,7 +1741,7 @@
       linea.setAttribute("points", pts);
     }
     function desbloquear(i) {
-      var b = el("button", { type: "button", class: "btn secondary pequeno" }, "Desbloquear");
+      var b = iconizar(el("button", { type: "button", class: "btn secondary pequeno" }, "Desbloquear"), "desbloquear");
       b.addEventListener("click", function () {
         b.disabled = true;
         api("admin_desbloquear", { p_tipo: i.tipo, p_objetivo: i.objetivo }).then(function (r) {
