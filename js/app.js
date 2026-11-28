@@ -1255,15 +1255,15 @@
   /* ---------- Roles ---------- */
   function abrirEditorRol(rol, alGuardar) {
     var RI = window.RolIcono, previo = document.activeElement;
-    var est = rol ? { forma: rol.forma, simbolo: rol.simbolo, c1: rol.c1, c2: rol.c2 }
-                  : { forma: "dentado", simbolo: "palomita", c1: "#1d8cf8", c2: "#6c2fe6" };
+    var est = rol ? { forma: rol.forma, simbolo: rol.simbolo, c1: rol.c1, c2: rol.c2, cs: rol.cs || "#ffffff" }
+                  : { forma: "dentado", simbolo: "palomita", c1: "#1d8cf8", c2: "#6c2fe6", cs: "#ffffff" };
     var degradado = rol ? !!rol.c2 : true;
     var nombre = campoTexto({ id: "rol-nombre", etiqueta: "Nombre", max: 30 });
     var desc = campoTexto({ id: "rol-desc", etiqueta: "Descripción (se ve en la página Roles)", max: 200 });
     var prio = campoTexto({ id: "rol-prio", etiqueta: "Prioridad (1 = la más alta)", max: 3, inputmode: "numeric", ayuda: "Junto al nombre se muestra el icono del rol con el número más bajo." });
     nombre.input.value = rol ? rol.nombre : ""; desc.input.value = rol ? rol.descripcion : ""; prio.input.value = rol ? rol.prioridad : "100";
     var vista = el("div", { class: "rol-vista" });
-    function aspecto() { return { id: rol ? rol.id : "nuevo", forma: est.forma, simbolo: est.simbolo, c1: est.c1, c2: degradado ? est.c2 : null }; }
+    function aspecto() { return { id: rol ? rol.id : "nuevo", forma: est.forma, simbolo: est.simbolo, c1: est.c1, c2: degradado ? est.c2 : null, cs: est.cs }; }
     function pintarVista() {
       vaciar(vista);
       vista.appendChild(iconoRolNodo(aspecto(), 64));
@@ -1304,6 +1304,8 @@
     c1.addEventListener("input", function () { est.c1 = c1.value; pintarVista(); });
     c2.addEventListener("input", function () { est.c2 = c2.value; pintarVista(); });
     c2.hidden = !degradado;
+    var cs = el("input", { type: "color", class: "rol-color", value: est.cs, "aria-label": "Color del símbolo" });
+    cs.addEventListener("input", function () { est.cs = cs.value; pintarVista(); });
     var error = el("p", { class: "f-error", role: "alert" });
     var guardar = el("button", { type: "submit", class: "btn" }, rol ? "Guardar cambios" : "Crear rol");
     var cancelar = el("button", { type: "button", class: "btn secondary" }, "Cancelar");
@@ -1314,6 +1316,8 @@
       selector("Símbolo", RI.simbolos, RI.etqSimbolos, "simbolo"),
       el("div", { class: "f-group" }, el("span", { class: "f-label" }, "Color"),
         el("div", { class: "rol-colores" }, modoS, modoD, c1, c2)),
+      el("div", { class: "f-group" }, el("span", { class: "f-label" }, "Color del símbolo (dentro de la forma)"),
+        el("div", { class: "rol-colores" }, cs, el("button", { type: "button", class: "btn secondary pequeno", onclick: function () { est.cs = "#ffffff"; cs.value = "#ffffff"; pintarVista(); } }, "Blanco"))),
       error, el("div", { class: "maestra-botones" }, cancelar, guardar));
     var fondo = el("div", { class: "modal-fondo" }, el("div", { class: "modal rol-editor", role: "dialog", "aria-modal": "true", "aria-label": rol ? "Editar rol" : "Crear rol" }, form));
     function cerrar() { document.removeEventListener("keydown", tecla, true); fondo.remove(); if (previo && previo.focus) previo.focus(); }
@@ -1333,7 +1337,7 @@
         titulo: rol ? "Guardar cambios del rol" : "Crear rol", texto: "Escribe la contraseña maestra para confirmar.", boton: rol ? "Guardar" : "Crear",
         ejecutar: function (m) {
           return api("admin_guardar_rol", { p_id: rol ? rol.id : null, p_nombre: n, p_descripcion: desc.input.value.trim(), p_prioridad: p,
-            p_forma: a.forma, p_simbolo: a.simbolo, p_c1: a.c1, p_c2: a.c2, p_maestra: m });
+            p_forma: a.forma, p_simbolo: a.simbolo, p_c1: a.c1, p_c2: a.c2, p_cs: a.cs, p_maestra: m });
         }
       }).then(function (r) { if (r) { cerrar(); alGuardar(); } });
     });
